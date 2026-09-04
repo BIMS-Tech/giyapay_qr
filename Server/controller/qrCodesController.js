@@ -245,9 +245,14 @@ const EXPORT_ROW_CAP = 25000;
 // Shared where/include for every list + export path, so filtering happens in
 // SQL instead of shipping the whole table to the browser.
 const buildQrListQuery = (req, adminId, extraWhere = {}) => {
-  const { searchTerm, branchFilter, userFilter, startDate, endDate } = req.query;
+  const { searchTerm, branchFilter, userFilter, startDate, endDate, status } = req.query;
 
   const where = { admin_id: adminId, ...extraWhere };
+
+  // Lets the dashboard's "needs attention" tiles deep-link into a filtered list.
+  if (status) {
+    where.status = status;
+  }
 
   if (searchTerm) {
     where[Op.or] = [

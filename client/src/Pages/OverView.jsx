@@ -1,17 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
+import { Link as RouterLink } from 'react-router-dom';
 import { jwtDecode } from 'jwt-decode';
 import {
-  Alert, Box, Card, CardContent, Chip, CircularProgress, Container, Grid,
-  MenuItem, Paper, Select, Skeleton, Typography, useTheme,
+  Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Container,
+  Divider, Grid, MenuItem, Paper, Select, Skeleton, Stack, Typography, useTheme,
 } from '@mui/material';
 import {
-  QrCode2 as QrIcon,
-  PaymentsOutlined as AmountIcon,
-  CheckCircleOutline as SettledIcon,
-  TrendingUp as RateIcon,
-  StorefrontOutlined as BranchIcon,
-  GroupOutlined as UsersIcon,
+  AddBusinessOutlined as AddBranchIcon,
+  PersonAddAlt1Outlined as AddUserIcon,
+  UploadFileOutlined as UploadIcon,
+  ArrowForward as ArrowIcon,
+  HourglassEmptyOutlined as PendingIcon,
+  ErrorOutlineOutlined as FailedIcon,
+  TimerOffOutlined as ExpiredIcon,
 } from '@mui/icons-material';
 import { AreaChart, DonutChart, BarList, statusColor } from '../Components/Charts';
 
@@ -21,18 +23,22 @@ const PERIODS = [
   { value: 90, label: 'Last 90 days' },
 ];
 
+// Statuses worth surfacing at the top, in the order an operator cares about.
+const ATTENTION = [
+  { status: 'pending', label: 'Pending', icon: PendingIcon, hint: 'Awaiting payment confirmation' },
+  { status: 'failed', label: 'Failed', icon: FailedIcon, hint: 'Payment did not go through' },
+  { status: 'expired', label: 'Expired', icon: ExpiredIcon, hint: 'Timed out before payment' },
+];
+
 const peso = new Intl.NumberFormat('en-PH', {
-  style: 'currency',
-  currency: 'PHP',
-  maximumFractionDigits: 0,
+  style: 'currency', currency: 'PHP', maximumFractionDigits: 0,
 });
 
-const compactPeso = (value) =>
-  value >= 1_000_000 ? `₱${(value / 1_000_000).toFixed(1)}M`
-  : value >= 1_000 ? `₱${(value / 1_000).toFixed(1)}k`
-  : peso.format(value || 0);
+const compactPeso = (v) =>
+  v >= 1_000_000 ? `₱${(v / 1_000_000).toFixed(1)}M`
+  : v >= 1_000 ? `₱${(v / 1_000).toFixed(0)}k`
+  : peso.format(v || 0);
 
-// The token is the authority on role - the separate localStorage copy can drift.
 const readRole = () => {
   try {
     return jwtDecode(localStorage.getItem('token')).userType;
@@ -41,38 +47,62 @@ const readRole = () => {
   }
 };
 
-const StatCard = ({ icon: Icon, label, value, hint, accent }) => (
-  <Card elevation={0} sx={{ height: '100%', border: 1, borderColor: 'divider', borderRadius: 2 }}>
+// OverView is mounted at /super-dashboard and /co-admin-dashboard; branch users
+// land on their QR list instead. Links have to follow whichever shell we are in.
+const routesFor = (role) =>
+  role === 'Co-Admin'
+    ? { base: '/co-admin-dashboard', qrList: '/co-admin-dashboard/manage-qr-ca', canManage: false }
+    : { base: '/super-dashboard', qrList: '/super-dashboard/manage-qr', canManage: true };
+
+/** A number that is also a way in. */
+const AttentionTile = ({ icon: Icon, label, hint, count, color, to }) => (
+  <Card
+    elevation={0}
+    component={RouterLink}
+    to={to}
+    sx={{
+      display: 'block', textDecoration: 'none', height: '100%',
+      border: 1, borderColor: 'divider', borderLeft: 4, borderLeftColor: color,
+      borderRadius: 2, transition: 'border-color .15s, transform .15s',
+      '&:hover': { borderColor: color, transform: 'translateY(-2px)' },
+    }}
+  >
     <CardContent>
-      <Box display="flex" alignItems="center" gap={1} mb={1.5}>
-        <Box
-          sx={{
-            width: 36, height: 36, borderRadius: 1.5, display: 'grid', placeItems: 'center',
-            bgcolor: accent, color: '#fff', flexShrink: 0,
-          }}
-        >
-          <Icon fontSize="small" />
-        </Box>
+      <Stack direction="row" alignItems="center" spacing={1} mb={0.5}>
+        <Icon sx={{ color, fontSize: 20 }} />
         <Typography variant="body2" color="text.secondary">{label}</Typography>
-      </Box>
+      </Stack>
 
-      <Typography variant="h4" sx={{ fontWeight: 600, lineHeight: 1.1 }}>
-        {value}
-      </Typography>
+      <Stack direction="row" alignItems="baseline" justifyContent="space-between">
+        <Typography variant="h4" sx={{ fontWeight: 600, color: 'text.primary' }}>
+          {count.toLocaleString()}
+        </Typography>
+        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ color }}>
+          <Typography variant="caption" sx={{ fontWeight: 600 }}>Review</Typography>
+          <ArrowIcon sx={{ fontSize: 14 }} />
+        </Stack>
+      </Stack>
 
-      {hint && (
-        <Typography variant="caption" color="text.secondary">{hint}</Typography>
-      )}
+      <Typography variant="caption" color="text.secondary">{hint}</Typography>
     </CardContent>
   </Card>
 );
 
+/** Compact KPI - these are context, not the main event, so they read as a strip. */
+const Metric = ({ label, value, sub }) => (
+  <Box sx={{ px: 2.5, py: 1.5, flex: '1 1 150px', minWidth: 150 }}>
+    <Typography variant="caption" color="text.secondary" display="block">{label}</Typography>
+    <Typography variant="h5" sx={{ fontWeight: 600, lineHeight: 1.2 }}>{value}</Typography>
+    {sub && <Typography variant="caption" color="text.secondary">{sub}</Typography>}
+  </Box>
+);
+
 const Panel = ({ title, action, children }) => (
   <Paper elevation={0} sx={{ p: 2.5, height: '100%', border: 1, borderColor: 'divider', borderRadius: 2 }}>
-    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+    <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
       <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{title}</Typography>
       {action}
-    </Box>
+    </Stack>
     {children}
   </Paper>
 );
@@ -85,8 +115,7 @@ const OverView = () => {
   const [error, setError] = useState('');
 
   const role = useMemo(readRole, []);
-  // Branch users get a narrower dashboard: no cross-branch ranking, no user count.
-  const isBranchUser = role === 'Branch User';
+  const routes = useMemo(() => routesFor(role), [role]);
 
   const fetchAnalytics = useCallback(async (signal) => {
     setLoading(true);
@@ -121,20 +150,26 @@ const OverView = () => {
   }, [fetchAnalytics]);
 
   const totals = data?.totals ?? {};
-  const busiestDay = useMemo(() => {
-    if (!data?.series?.length) return null;
-    return data.series.reduce((best, d) => (d.count > best.count ? d : best), data.series[0]);
+
+  const byStatus = useMemo(() => {
+    const map = new Map((data?.statusBreakdown ?? []).map((r) => [String(r.status).toLowerCase(), r.count]));
+    return (s) => map.get(s) ?? 0;
   }, [data]);
+
+  // Only surface a tile when there is actually something in it.
+  const attention = ATTENTION
+    .map((a) => ({ ...a, count: byStatus(a.status) }))
+    .filter((a) => a.count > 0);
 
   if (loading && !data) {
     return (
       <Container maxWidth={false} sx={{ py: 4 }}>
-        <Grid container spacing={2}>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Grid item xs={12} sm={6} md={3} key={i}>
-              <Skeleton variant="rounded" height={140} />
-            </Grid>
+        <Skeleton variant="text" width={220} height={44} />
+        <Grid container spacing={2} mt={1}>
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Grid item xs={12} sm={4} key={i}><Skeleton variant="rounded" height={130} /></Grid>
           ))}
+          <Grid item xs={12}><Skeleton variant="rounded" height={90} /></Grid>
           <Grid item xs={12} md={8}><Skeleton variant="rounded" height={300} /></Grid>
           <Grid item xs={12} md={4}><Skeleton variant="rounded" height={300} /></Grid>
         </Grid>
@@ -144,100 +179,122 @@ const OverView = () => {
 
   return (
     <Container maxWidth={false} sx={{ py: 4 }}>
-      <Box
-        display="flex" justifyContent="space-between" alignItems="center"
-        flexWrap="wrap" gap={2} mb={3}
+      {/* Title + the things an admin comes here to do */}
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        justifyContent="space-between"
+        alignItems={{ xs: 'stretch', md: 'center' }}
+        spacing={2}
+        mb={3}
       >
         <Box>
           <Typography variant="h4" sx={{ fontWeight: 500 }}>Dashboard</Typography>
           <Typography variant="body2" color="text.secondary">
-            {isBranchUser ? 'Activity for your branch' : 'Activity across your merchant account'}
+            {routes.canManage ? 'Overview and quick actions' : 'Overview for your merchant account'}
           </Typography>
         </Box>
 
-        <Box display="flex" alignItems="center" gap={1}>
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
+          {routes.canManage && (
+            <>
+              <Button
+                component={RouterLink} to={`${routes.base}/manage-branches/add`}
+                variant="outlined" size="small" startIcon={<AddBranchIcon />}
+              >
+                Branch
+              </Button>
+              <Button
+                component={RouterLink} to={`${routes.base}/manage-users/add`}
+                variant="outlined" size="small" startIcon={<AddUserIcon />}
+              >
+                User
+              </Button>
+              <Button
+                component={RouterLink} to={`${routes.base}/upload`}
+                variant="outlined" size="small" startIcon={<UploadIcon />}
+              >
+                Batch upload
+              </Button>
+            </>
+          )}
+
           {loading && <CircularProgress size={18} />}
           <Select
-            size="small"
-            value={days}
+            size="small" value={days}
             onChange={(e) => setDays(Number(e.target.value))}
-            sx={{ minWidth: 150 }}
+            sx={{ minWidth: 145 }}
           >
-            {PERIODS.map((p) => (
-              <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
-            ))}
+            {PERIODS.map((p) => <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>)}
           </Select>
-        </Box>
-      </Box>
+        </Stack>
+      </Stack>
 
       {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
-      <Grid container spacing={2} mb={1}>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            icon={QrIcon}
+      {/* Needs attention: leads the page, because it is the part you act on */}
+      {attention.length > 0 && (
+        <Box mb={3}>
+          <Typography
+            variant="overline"
+            color="text.secondary"
+            sx={{ letterSpacing: 1, fontWeight: 600 }}
+          >
+            Needs attention
+          </Typography>
+          <Grid container spacing={2} mt={0}>
+            {attention.map((a) => (
+              <Grid item xs={12} sm={6} md={4} key={a.status}>
+                <AttentionTile
+                  icon={a.icon}
+                  label={a.label}
+                  hint={a.hint}
+                  count={a.count}
+                  color={statusColor(theme, a.status)}
+                  to={`${routes.qrList}?status=${a.status}`}
+                />
+              </Grid>
+            ))}
+          </Grid>
+        </Box>
+      )}
+
+      {/* Headline numbers, as a single strip rather than six competing cards */}
+      <Paper
+        elevation={0}
+        sx={{ border: 1, borderColor: 'divider', borderRadius: 2, mb: 3, overflow: 'hidden' }}
+      >
+        <Stack
+          direction="row"
+          flexWrap="wrap"
+          divider={<Divider orientation="vertical" flexItem />}
+        >
+          <Metric
             label="QR codes"
             value={(totals.qrCodes ?? 0).toLocaleString()}
-            hint={busiestDay ? `Busiest day ${busiestDay.date} (${busiestDay.count})` : null}
-            accent={theme.palette.primary.main}
+            sub={`in the last ${data?.days ?? days} days`}
           />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            icon={AmountIcon}
-            label="Total value"
-            value={compactPeso(totals.totalAmount)}
-            hint="All QR codes in range"
-            accent={theme.palette.secondary.main}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            icon={SettledIcon}
+          <Metric label="Total value" value={compactPeso(totals.totalAmount)} sub="all statuses" />
+          <Metric
             label="Settled"
             value={compactPeso(totals.paidAmount)}
-            hint={`${(totals.paidCount ?? 0).toLocaleString()} paid`}
-            accent={theme.palette.success.main}
+            sub={`${(totals.paidCount ?? 0).toLocaleString()} paid`}
           />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            icon={RateIcon}
+          <Metric
             label="Conversion"
             value={`${Math.round((totals.conversionRate ?? 0) * 100)}%`}
-            hint="Paid vs created"
-            accent={theme.palette.info.main}
+            sub="paid vs created"
           />
-        </Grid>
+          <Metric label="Branches" value={(totals.branches ?? 0).toLocaleString()} />
+          {totals.users !== null && totals.users !== undefined && (
+            <Metric label="Users" value={totals.users.toLocaleString()} />
+          )}
+        </Stack>
+      </Paper>
 
-        {!isBranchUser && (
-          <>
-            <Grid item xs={12} sm={6} md={3}>
-              <StatCard
-                icon={BranchIcon}
-                label="Branches"
-                value={(totals.branches ?? 0).toLocaleString()}
-                accent={theme.palette.warning.main}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <StatCard
-                icon={UsersIcon}
-                label="Users"
-                value={(totals.users ?? 0).toLocaleString()}
-                accent={theme.palette.grey[600]}
-              />
-            </Grid>
-          </>
-        )}
-      </Grid>
-
-      <Grid container spacing={2} mt={0}>
+      {/* Trends and detail sit below the actionable content */}
+      <Grid container spacing={2}>
         <Grid item xs={12} md={8}>
-          <Panel
-            title="QR codes created"
-            action={<Chip size="small" label={`${data?.days ?? days} days`} />}
-          >
+          <Panel title="QR codes created" action={<Chip size="small" label={`${data?.days ?? days} days`} />}>
             <AreaChart data={data?.series ?? []} valueKey="count" height={240} />
           </Panel>
         </Grid>
@@ -248,29 +305,34 @@ const OverView = () => {
           </Panel>
         </Grid>
 
-        {!isBranchUser && (
-          <Grid item xs={12} md={6}>
-            <Panel title="Top branches">
-              <BarList
-                data={data?.topBranches ?? []}
-                labelKey="branch_name"
-                valueKey="count"
-                formatValue={(v) => `${v.toLocaleString()} QR`}
-              />
-            </Panel>
-          </Grid>
-        )}
+        <Grid item xs={12} md={6}>
+          <Panel
+            title="Top branches"
+            action={
+              <Button component={RouterLink} to={routes.qrList} size="small" endIcon={<ArrowIcon />}>
+                All QR codes
+              </Button>
+            }
+          >
+            <BarList
+              data={data?.topBranches ?? []}
+              labelKey="branch_name"
+              valueKey="count"
+              formatValue={(v) => `${v.toLocaleString()} QR`}
+            />
+          </Panel>
+        </Grid>
 
-        <Grid item xs={12} md={isBranchUser ? 12 : 6}>
+        <Grid item xs={12} md={6}>
           <Panel title="Recent activity">
             {(data?.recent ?? []).length === 0 ? (
               <Typography variant="body2" color="text.disabled">Nothing yet</Typography>
             ) : (
               data.recent.map((row) => (
-                <Box
+                <Stack
                   key={row.id}
-                  display="flex" alignItems="center" justifyContent="space-between"
-                  gap={1} py={1}
+                  direction="row" alignItems="center" justifyContent="space-between"
+                  spacing={1} py={1}
                   sx={{ borderBottom: 1, borderColor: 'divider', '&:last-child': { borderBottom: 0 } }}
                 >
                   <Box minWidth={0}>
@@ -281,7 +343,7 @@ const OverView = () => {
                       {new Date(row.createdAt).toLocaleString()}
                     </Typography>
                   </Box>
-                  <Box display="flex" alignItems="center" gap={1.5} flexShrink={0}>
+                  <Stack direction="row" alignItems="center" spacing={1.5} flexShrink={0}>
                     <Typography variant="body2" sx={{ fontWeight: 500 }}>
                       {peso.format(row.amount || 0)}
                     </Typography>
@@ -295,8 +357,8 @@ const OverView = () => {
                         fontWeight: 500,
                       }}
                     />
-                  </Box>
-                </Box>
+                  </Stack>
+                </Stack>
               ))
             )}
           </Panel>

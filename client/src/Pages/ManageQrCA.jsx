@@ -10,6 +10,7 @@ import {
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
+import { useSearchParams } from 'react-router-dom';
 import QRCode from 'qrcode.react';
 import { io } from 'socket.io-client';
 import RippleLoader from '../Components/Loader';
@@ -27,6 +28,7 @@ const ManageQrCA = () => {
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [openView, setOpenView] = useState(false);
   const [branchFilter, setBranchFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [userFilter, setUserFilter] = useState('');
   const [dateFilter, setDateFilter] = useState({
     startDate: '',
@@ -37,7 +39,16 @@ const ManageQrCA = () => {
   const [exporting, setExporting] = useState(false);
   const socketRef = useRef(null);
 
+  const [searchParams] = useSearchParams();
+
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
+
+  // The dashboard's "needs attention" tiles link here as ?status=pending etc.
+  useEffect(() => {
+    const fromUrl = searchParams.get('status') || '';
+    setStatusFilter(fromUrl);
+    setPage(0);
+  }, [searchParams]);
 
   const authHeader = useCallback(
     () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }),
@@ -58,12 +69,13 @@ const ManageQrCA = () => {
       page,
       pageSize: rowsPerPage,
       searchTerm: debouncedSearch || undefined,
+      status: statusFilter || undefined,
       branchFilter: branchFilter || undefined,
       userFilter: userFilter || undefined,
       startDate: dateFilter.startDate || undefined,
       endDate: dateFilter.endDate || undefined,
     }),
-    [page, rowsPerPage, debouncedSearch, branchFilter, userFilter, dateFilter]
+    [page, rowsPerPage, debouncedSearch, branchFilter, userFilter, dateFilter, statusFilter]
   );
 
   const formatRow = (qr) => ({
@@ -344,6 +356,21 @@ const ManageQrCA = () => {
                 )}
               />
 
+              <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: '200px' }, maxWidth: '260px' }}>
+                <InputLabel id="qr-status-filter">Status</InputLabel>
+                <Select
+                  labelId="qr-status-filter"
+                  label="Status"
+                  value={statusFilter}
+                  onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}
+                >
+                  <MenuItem value="">All statuses</MenuItem>
+                  {['paid', 'pending', 'expired', 'cancelled', 'failed'].map((s) => (
+                    <MenuItem key={s} value={s} sx={{ textTransform: 'capitalize' }}>{s}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
               {/* User Name Autocomplete */}
               <Autocomplete
                 options={users}
@@ -420,6 +447,7 @@ const ManageQrCA = () => {
                 setSearchTerm('');
                 setBranchFilter('');
                 setUserFilter('');
+                setStatusFilter('');
                 setDateFilter({ startDate: '', endDate: '' });
                 setPage(0);
               }}
