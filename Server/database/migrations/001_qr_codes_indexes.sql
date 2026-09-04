@@ -1,24 +1,37 @@
--- Indexes for the QR code list/filter/count queries.
+-- Indexes for the QR code list/filter/cron queries.
 --
--- Every admin-facing query filters on admin_id and orders by created_at, but
--- qr_codes had no index on either -- so each request was a full table scan plus
--- a filesort. Apply once against the production database.
+-- qr_codes already carries single-column FK indexes (fk_qr_admin_id,
+-- fk_qr_branch_id, fk_qr_user_id) and a unique nonce index, so those columns
+-- are deliberately NOT repeated here. What was missing is a composite that
+-- covers the sort: every list query is
 --
---   mysql -h <host> -u <user> -p <database> < 001_qr_codes_indexes.sql
+--   WHERE admin_id = ? [AND branch_id = ?] ORDER BY created_at DESC LIMIT ?
+--
+-- An index on admin_id alone still forces a filesort over every row for that
+-- tenant. Leading with the equality column and trailing with the sort column
+-- lets InnoDB walk the index and stop at LIMIT.
+--
+-- Apply once:
+--   mysql -h <host> -u <user> -p giyapayqr < 001_qr_codes_indexes.sql
+-- Re-running errors with "Duplicate key name", which is harmless.
 
--- Primary access path: WHERE admin_id = ? ORDER BY created_at DESC LIMIT ?
-CREATE INDEX idx_qr_codes_admin_created ON qr_codes (admin_id, created_at);
+-- Admin and Co-Admin list: tenant + sort.
+CREATE INDEX idx_qr_codes_admin_created
+  ON qr_codes (admin_id, created_at);
 
--- Join targets for the user/branch includes.
-CREATE INDEX idx_qr_codes_user_id   ON qr_codes (user_id);
-CREATE INDEX idx_qr_codes_branch_id ON qr_codes (branch_id);
+-- Branch-user list: tenant + branch + sort, now that branch scoping is in SQL.
+CREATE INDEX idx_qr_codes_admin_branch_created
+  ON qr_codes (admin_id, branch_id, created_at);
 
--- checkTransactions.js cron scans for pending rows on an interval.
-CREATE INDEX idx_qr_codes_status ON qr_codes (status);
+-- checkTransactions.js scans for pending rows on an interval.
+CREATE INDEX idx_qr_codes_status
+  ON qr_codes (status);
 
 -- Invoice lookups: /check-invoice/:invoice_number and the callback handlers.
-CREATE INDEX idx_qr_codes_invoice_number ON qr_codes (invoice_number);
+CREATE INDEX idx_qr_codes_invoice_number
+  ON qr_codes (invoice_number);
 
--- Search filter uses payment_reference LIKE '%...%', which cannot use an index,
--- but exact-reference lookups from the callbacks can.
-CREATE INDEX idx_qr_codes_payment_reference ON qr_codes (payment_reference);
+-- Exact payment_reference lookups from callbacks. The list's LIKE '%...%'
+-- search cannot use this, but the callback path can.
+CREATE INDEX idx_qr_codes_payment_reference
+  ON qr_codes (payment_reference);
