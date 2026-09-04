@@ -294,7 +294,7 @@ const AddQr = () => {
               variant="h5"
               fontWeight="bold"
               gutterBottom
-              sx={{ color: '#333', marginBottom: '24px', textAlign: 'center', fontFamily: 'Montserrat, sans-serif' }}
+              sx={{ color: 'var(--app-text)', marginBottom: '24px', textAlign: 'center', fontFamily: 'Montserrat, sans-serif' }}
             >
               Transaction Details
             </Typography>
@@ -315,7 +315,7 @@ const AddQr = () => {
                 style={{ width: '100%', height: 'auto', marginBottom: '10px' }}
               />
               {/* Centered Branch Name and Invoice Number */}
-              <Typography variant="body1" sx={{ fontWeight: '500', color: '#333' }}>
+              <Typography variant="body1" sx={{ fontWeight: '500', color: 'var(--app-text)' }}>
                 {formData.branch_name}
               </Typography>
               <Typography variant="body2" sx={{ color: '#666' }}>

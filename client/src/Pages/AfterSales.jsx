@@ -26,7 +26,7 @@ const AfterSales = () => {
           width: '100%',
           padding: 3,
           borderRadius: 2,
-          backgroundColor: '#ffffff',
+          backgroundColor: 'var(--app-surface)',
           position: 'relative',
         }}
       >

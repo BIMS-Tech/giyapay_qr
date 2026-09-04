@@ -19,7 +19,7 @@ const StyledTextField = styled(TextField)(({ theme }) => ({
     },
   },
   '& .MuiInputLabel-root': {
-    color: '#616161',
+    color: 'var(--app-text-secondary)',
     fontFamily: 'Montserrat, sans-serif',
   },
 }));

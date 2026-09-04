@@ -112,7 +112,7 @@ const ProfilePage = () => {
           width: '100%',
           padding: 3,
           borderRadius: 2,
-          backgroundColor: '#ffffff',
+          backgroundColor: 'var(--app-surface)',
         }}
       >
         <Box display="flex" justifyContent="center" marginBottom={2}>

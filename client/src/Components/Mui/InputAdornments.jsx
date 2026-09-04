@@ -22,15 +22,15 @@ const CustomOutlinedInput = styled(OutlinedInput)(({ theme }) => ({
     borderColor: '#000000',
   },
   '& .MuiInputAdornment-root': {
-    color: '#000000',
+    color: 'var(--app-text)',
   },
 }));
 
 const CustomInputLabel = styled(InputLabel)(({ theme }) => ({
   fontFamily: 'Montserrat, sans-serif',
-  color: '#616161',
+  color: 'var(--app-text-secondary)',
   '&.Mui-focused': {
-    color: '#000000',
+    color: 'var(--app-text)',
   },
 }));
 

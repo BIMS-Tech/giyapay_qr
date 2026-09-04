@@ -72,7 +72,7 @@ const SuccessCallback = () => {
             <Typography variant="h4" sx={{ fontWeight: 'bold', mt: 2, color: '#ed1f79' }}>
               Payment Successful!
             </Typography>
-            <Paper sx={{ p: 3, mt: 4, borderRadius: 3, backgroundColor: '#ffffff', boxShadow: 3 }}>
+            <Paper sx={{ p: 3, mt: 4, borderRadius: 3, backgroundColor: 'var(--app-surface)', boxShadow: 3 }}>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
                   <Typography variant="subtitle1">Amount</Typography>

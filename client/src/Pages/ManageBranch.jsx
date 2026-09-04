@@ -90,7 +90,7 @@ const ManageBranches = () => {
   };
 
   return (
-    <Box className="manage-branches-container" sx={{ backgroundColor: 'white', padding: '20px' }}>
+    <Box className="manage-branches-container" sx={{ backgroundColor: 'var(--app-surface)', padding: '20px' }}>
       {loading ? (
         <Box display="flex" justifyContent="center" alignItems="center" height="60vh">
           <RippleLoader />

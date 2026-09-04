@@ -559,7 +559,7 @@ const ManageQrCA = () => {
                   gutterBottom
                   style={{
                     whiteSpace: 'pre-wrap',
-                    backgroundColor: '#f5f5f5',
+                    backgroundColor: 'var(--app-surface-muted)',
                     padding: '8px',
                     borderRadius: '4px',
                     border: '1px solid #ddd',

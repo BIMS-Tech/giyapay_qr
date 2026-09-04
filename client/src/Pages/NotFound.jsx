@@ -17,7 +17,7 @@ const NotFound = () => {
                 alignItems: 'center',
                 justifyContent: 'center',
                 height: '100vh',
-                backgroundColor: '#fff',
+                backgroundColor: 'var(--app-surface)',
                 textAlign: 'center',
                 padding: 2
             }}
@@ -56,7 +56,7 @@ const NotFound = () => {
             <Typography
                 variant="body1"
                 sx={{
-                    color: '#000',
+                    color: 'var(--app-text)',
                     marginBottom: '30px',
                     maxWidth: '600px',
                     textAlign: 'left'
@@ -92,7 +92,7 @@ const NotFound = () => {
             <Typography
                 variant="body2"
                 sx={{
-                    color: '#000',
+                    color: 'var(--app-text)',
                     marginTop: '20px',
                     maxWidth: '600px',
                     textAlign: 'left',
