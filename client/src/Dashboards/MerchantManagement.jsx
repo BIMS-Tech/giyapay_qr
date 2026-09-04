@@ -1,52 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import {
     TextField, Button, Box, Typography, Container, Paper, IconButton, InputAdornment, Grid,
     Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Collapse, Snackbar,
-    Alert, FormControl, InputLabel, Select, MenuItem
+    Alert, FormControl, FormHelperText, InputLabel, Select, MenuItem,
+    Dialog, DialogTitle, DialogContent, DialogActions, Chip, Stack, Tooltip, Divider,
 } from '@mui/material';
-import { Visibility, VisibilityOff, ExpandMore, ExpandLess, Logout } from '@mui/icons-material';
-import { FaUsers } from 'react-icons/fa';
-import { styled } from '@mui/system';
+import {
+    Visibility, VisibilityOff, ExpandMore, ExpandLess, Logout,
+    Add as AddIcon, Search as SearchIcon, ContentCopy as CopyIcon,
+} from '@mui/icons-material';
 import io from 'socket.io-client';
 import CustomTextField from '../Components/Mui/CustomTextField';
+import ThemeToggle from '../Components/ThemeToggle';
 
-
-const LeftSection = styled(Box)(({ theme }) => ({
-    display: 'flex',
-    flexDirection: 'column',
-    padding: theme.spacing(3),
-    borderRight: `1px solid ${theme.palette.divider}`,
-    height: '100%',
-}));
-
-const RightSection = styled(Box)(({ theme }) => ({
-    padding: theme.spacing(3),
-    height: '100%',
-}));
-
-const WelcomeBanner = styled(Box)(({ theme }) => ({
-    backgroundColor: '#ED1F79',
-    color: theme.palette.common.white,
-    padding: theme.spacing(2),
-    textAlign: 'center',
-    borderRadius: theme.shape.borderRadius,
-    marginBottom: theme.spacing(3),
-}));
-
-const ResponsiveTable = styled(TableContainer)(({ theme }) => ({
-    marginTop: theme.spacing(3),
-    maxHeight: '400px',
-    '& table': {
-        width: '100%',
-        tableLayout: 'fixed',
-    },
-    [theme.breakpoints.up('md')]: {
-        '& table': {
-            tableLayout: 'auto',
-        },
-    },
-}));
 
 const MerchantManagement = () => {
     const [email, setEmail] = useState('');
@@ -70,6 +37,9 @@ const MerchantManagement = () => {
     const [socket, setSocket] = useState(null);
 
     const [errors, setErrors] = useState({});
+    const [search, setSearch] = useState('');
+    const [addOpen, setAddOpen] = useState(false);
+    const [revealedSecret, setRevealedSecret] = useState(null);
 
     const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
@@ -202,12 +172,15 @@ const MerchantManagement = () => {
             // Clear form state
             setEmail('');
             setPassword('');
+            setMerchantName('');
             setMerchantID('');
             setMerchantSecret('');
             setPaymentUrl('');
             setMerchantUrl('');
             setGatewayAccount('');
             setPaymentMethod('');
+            setErrors({});
+            setAddOpen(false);
         } catch (error) {
             console.error('Error adding admin:', error);
             setSnackbarMessage('Failed to add admin');
@@ -230,278 +203,267 @@ const MerchantManagement = () => {
         setSnackbarOpen(false);
     };
 
+    // Client-side is fine here: this list is merchants, not transactions.
+    const filteredAdmins = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        if (!q) return admins;
+        return admins.filter((a) =>
+            [a.merchant_name, a.merchant_id, a.email, a.merchant_url]
+                .some((v) => String(v || '').toLowerCase().includes(q))
+        );
+    }, [admins, search]);
+
+    const copy = (value) => {
+        navigator.clipboard?.writeText(String(value ?? '')).then(
+            () => {
+                setSnackbarMessage('Copied to clipboard');
+                setSnackbarSeverity('success');
+                setSnackbarOpen(true);
+            },
+            () => {}
+        );
+    };
+
+    const field = (label, value, setter, key, extra = {}) => (
+        <CustomTextField
+            label={label}
+            value={value}
+            onChange={(e) => setter(e.target.value)}
+            fullWidth
+            required
+            error={!!errors[key]}
+            helperText={errors[key]}
+            // Stops the browser autofilling the super admin's own credentials
+            // into a form that creates a different merchant's account - which
+            // also left the floating label overlapping the value.
+            autoComplete="off"
+            {...extra}
+        />
+    );
+
     return (
-        <Container maxWidth="xl" sx={{ mt: 5 }}>
-            {/* Welcome Message */}
-            <WelcomeBanner>
-                <Typography variant="h4">Welcome to the Super Admin Dashboard</Typography>
-                <Typography variant="subtitle1">Manage merchants and view stats below</Typography>
-            </WelcomeBanner>
+        <Container maxWidth="xl" sx={{ py: 4 }}>
+            <Stack
+                direction={{ xs: 'column', md: 'row' }}
+                justifyContent="space-between"
+                alignItems={{ xs: 'stretch', md: 'center' }}
+                spacing={2}
+                mb={3}
+            >
+                <Box>
+                    <Typography variant="h4" sx={{ fontWeight: 500 }}>Merchant Management</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                        Add and review merchant accounts
+                    </Typography>
+                </Box>
 
-            <Grid container spacing={4} sx={{ flexGrow: 1 }}>
-                <Grid item xs={12} md={5}>
-                    <LeftSection component={Paper} elevation={3}>
-                        <Typography variant="h5" gutterBottom>
-                            Add Admin
-                        </Typography>
-                        <form onSubmit={handleSubmit}>
-                            <Box mb={2}>
-                                <CustomTextField
-                                    label="Email"
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    fullWidth
-                                    required
-                                    error={!!errors.email}
-                                    helperText={errors.email}
-                                />
-                            </Box>
-                            <Box mb={2}>
-                                <CustomTextField
-                                    label="Password"
-                                    type={showPassword ? 'text' : 'password'}
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    fullWidth
-                                    required
-                                    error={!!errors.password}
-                                    helperText={errors.password}
-                                    InputProps={{
-                                        endAdornment: (
-                                            <InputAdornment position="end">
-                                                <IconButton onClick={handleClickShowPassword}>
-                                                    {showPassword ? <VisibilityOff /> : <Visibility />}
-                                                </IconButton>
-                                            </InputAdornment>
-                                        ),
-                                    }}
-                                />
-                            </Box>
-                            <Box mb={2}>
-                                <CustomTextField
-                                    label="Merchant Name"
-                                    value={merchantName}
-                                    onChange={(e) => setMerchantName(e.target.value)}
-                                    fullWidth
-                                    required
-                                    error={!!errors.merchantName}
-                                    helperText={errors.merchantName}
-                                />
-                            </Box>
-                            <Box mb={2}>
-                                <CustomTextField
-                                    label="Merchant ID"
-                                    value={merchantID}
-                                    onChange={(e) => setMerchantID(e.target.value)}
-                                    fullWidth
-                                    required
-                                    error={!!errors.merchantID}
-                                    helperText={errors.merchantID}
-                                />
-                            </Box>
-                            <Box mb={2}>
-                                <CustomTextField
-                                    label="Merchant Secret"
-                                    value={merchantSecret}
-                                    onChange={(e) => setMerchantSecret(e.target.value)}
-                                    fullWidth
-                                    required
-                                    error={!!errors.merchantSecret}
-                                    helperText={errors.merchantSecret}
-                                />
-                            </Box>
-                            <Box mb={2}>
-                                <CustomTextField
-                                    label="checkout Url"
-                                    value={paymentUrl}
-                                    onChange={(e) => setPaymentUrl(e.target.value)}
-                                    fullWidth
-                                    required
-                                    error={!!errors.paymentUrl}
-                                    helperText={errors.paymentUrl}
-                                />
-                            </Box>
-                            <Box mb={2}>
-                                <CustomTextField
-                                    label="Merchant Url"
-                                    value={merchantUrl}
-                                    onChange={(e) => setMerchantUrl(e.target.value)}
-                                    fullWidth
-                                    required
-                                    error={!!errors.merchantUrl}
-                                    helperText={errors.merchantUrl}
-                                />
-                            </Box>
-                            <Box mb={2}>
-                                <FormControl fullWidth required error={!!errors.gatewayAccount}>
-                                    <InputLabel id="gateway-account-type-label">Gateway Account Type</InputLabel>
-                                    <Select
-                                        labelId="gateway-account-type-label"
-                                        value={gatewayAccount}
-                                        onChange={(e) => {
-                                            setGatewayAccount(e.target.value);
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <Chip label={`${adminTotal} merchant${adminTotal === 1 ? '' : 's'}`} />
+                    <ThemeToggle />
+                    <Button variant="contained" startIcon={<AddIcon />} onClick={() => setAddOpen(true)}>
+                        Add merchant
+                    </Button>
+                    <Button variant="outlined" color="error" startIcon={<Logout />} onClick={handleLogout}>
+                        Log out
+                    </Button>
+                </Stack>
+            </Stack>
 
-                                            // Reset payment method if Gateway Account Type is Universal
-                                            if (e.target.value === 'Universal') {
-                                                setPaymentMethod('');
-                                            }
-                                        }}
-                                    >
-                                        <MenuItem value="Individual">Individual</MenuItem>
-                                        <MenuItem value="Universal">Universal</MenuItem>
-                                    </Select>
-                                    {errors.gatewayAccount && <FormHelperText>{errors.gatewayAccount}</FormHelperText>}
-                                </FormControl>
-                            </Box>
+            <Paper elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 2, overflow: 'hidden' }}>
+                <Box sx={{ p: 2 }}>
+                    <TextField
+                        size="small"
+                        fullWidth
+                        placeholder="Search by merchant name, merchant ID, email or URL"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        InputProps={{
+                            startAdornment: (
+                                <InputAdornment position="start">
+                                    <SearchIcon fontSize="small" />
+                                </InputAdornment>
+                            ),
+                        }}
+                        sx={{ maxWidth: 480 }}
+                    />
+                </Box>
 
-                            {/* Conditional Payment Method Field */}
-                            {gatewayAccount === 'Individual' && (
-                                <Box mb={2}>
-                                    <FormControl fullWidth required error={!!errors.paymentMethod}>
-                                        <InputLabel id="payment-method-label">Payment Method</InputLabel>
-                                        <Select
-                                            labelId="payment-method-label"
-                                            value={paymentMethod}
-                                            onChange={(e) => setPaymentMethod(e.target.value)}
-                                        >
-                                            {/* Example Payment Methods */}
-                                            <MenuItem value="MASTERCARD/VISA">MASTERCARD/VISA</MenuItem>
-                                            <MenuItem value="GCASH">GCASH</MenuItem>
-                                            <MenuItem value="INSTAPAY">INSTAPAY</MenuItem>
-                                        </Select>
-                                        {errors.paymentMethod && <FormHelperText>{errors.paymentMethod}</FormHelperText>}
-                                    </FormControl>
-                                </Box>
+                <Divider />
+
+                {/* The table has more columns than fit on a laptop, so it scrolls
+                    inside this container rather than overflowing the page. */}
+                <TableContainer sx={{ overflowX: 'auto', maxHeight: 620 }}>
+                    <Table stickyHeader size="small" sx={{ minWidth: 900 }}>
+                        <TableHead>
+                            <TableRow>
+                                <TableCell sx={{ width: 64 }}>ID</TableCell>
+                                <TableCell>Merchant</TableCell>
+                                <TableCell>Merchant ID</TableCell>
+                                <TableCell>Email</TableCell>
+                                <TableCell>Gateway</TableCell>
+                                <TableCell>Payment method</TableCell>
+                                <TableCell sx={{ width: 56 }} align="right">Details</TableCell>
+                            </TableRow>
+                        </TableHead>
+
+                        <TableBody>
+                            {filteredAdmins.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={7} align="center" sx={{ py: 6, color: 'text.disabled' }}>
+                                        {admins.length === 0 ? 'No merchants yet' : 'No merchants match that search'}
+                                    </TableCell>
+                                </TableRow>
                             )}
 
-
-                            <Button
-                                type="submit"
-                                variant="contained"
-                                fullWidth
-                                sx={{
-                                    color: '#fff',
-                                    backgroundImage: 'linear-gradient(to right, #FBB03A, #ED1F79, #FBB03A, #ED1F79)',
-                                    backgroundSize: '300% 100%',
-                                    border: 'none',
-                                    transition: 'all 0.4s ease-in-out',
-                                    padding: '8px 40px',
-                                    borderRadius: '8px',
-                                    fontFamily: 'Montserrat, sans-serif',
-                                    fontWeight: 400,
-                                    textTransform: 'none',
-                                    '&:hover': {
-                                        backgroundPosition: '100% 0',
-                                    },
-                                }}
-                            >
-                                Add Admin
-                            </Button>
-
-                        </form>
-                        <Button
-                            variant="contained"
-                            color="error"
-                            startIcon={<Logout />}
-                            onClick={handleLogout}
-                            fullWidth
-                            sx={{
-                                mt: 4,
-                                color: '#fff',
-                                backgroundColor: '#ED1F79',
-                                padding: '10px 50px',
-                                borderRadius: '8px',
-                                fontFamily: 'Montserrat, sans-serif',
-                                fontWeight: 600,
-                                textTransform: 'none',
-                                boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)',
-                                transition: 'all 0.3s ease',
-                                '&:hover': {
-                                    backgroundColor: '#FBB03A',
-                                    boxShadow: '0 8px 16px rgba(0, 0, 0, 0.15)',
-                                },
-                            }}
-                        >
-                            LOG OUT
-                        </Button>
-
-                    </LeftSection>
-                </Grid>
-
-                <Grid item xs={12} md={7}>
-                    <RightSection component={Paper} elevation={3}>
-                        <Box sx={{ textAlign: 'center' }}>
-                            <Typography variant="h5" gutterBottom>
-                                <FaUsers style={{ marginRight: 8 }} />
-                                Super Admin Dashboard
-                            </Typography>
-                            <Typography
-                                variant="h6"
-                                sx={{
-                                    color: '#ED1F79',
-                                    fontFamily: 'Montserrat, sans-serif',
-                                    fontWeight: 600,
-                                }}
-                            >
-                                Total Admins: {adminTotal}
-                            </Typography>
-
-                        </Box>
-
-                        <ResponsiveTable component={Paper}>
-                            <Table stickyHeader sx={{ minWidth: 650, width: '100%', overflowX: 'auto' }}>
-                                <TableHead>
-                                    <TableRow>
-                                        <TableCell>ID</TableCell>
-                                        <TableCell>Merchant Name</TableCell>
-                                        <TableCell>Merchant ID</TableCell>
-                                        <TableCell>Email</TableCell>
-                                        <TableCell>Payment URL</TableCell>
-                                        <TableCell>Merchant URL</TableCell>
-                                        <TableCell>Gateway Account Type</TableCell>
-                                        <TableCell>Payment Method</TableCell>
-                                        <TableCell>Actions</TableCell>
+                            {filteredAdmins.map((admin, index) => (
+                                <React.Fragment key={admin.id}>
+                                    <TableRow hover>
+                                        <TableCell>{admin.id}</TableCell>
+                                        <TableCell sx={{ fontWeight: 500 }}>
+                                            {admin.merchant_name || <em style={{ opacity: 0.5 }}>Not set</em>}
+                                        </TableCell>
+                                        <TableCell>
+                                            {admin.merchant_id ? (
+                                                <Stack direction="row" alignItems="center" spacing={0.5}>
+                                                    <span>{admin.merchant_id}</span>
+                                                    <Tooltip title="Copy merchant ID">
+                                                        <IconButton size="small" onClick={() => copy(admin.merchant_id)}>
+                                                            <CopyIcon sx={{ fontSize: 14 }} />
+                                                        </IconButton>
+                                                    </Tooltip>
+                                                </Stack>
+                                            ) : <em style={{ opacity: 0.5 }}>Not set</em>}
+                                        </TableCell>
+                                        <TableCell sx={{ wordBreak: 'break-word' }}>{admin.email}</TableCell>
+                                        <TableCell>
+                                            {admin.gateway_account_type && (
+                                                <Chip size="small" label={admin.gateway_account_type} variant="outlined" />
+                                            )}
+                                        </TableCell>
+                                        <TableCell>{admin.payment_method || '—'}</TableCell>
+                                        <TableCell align="right">
+                                            <IconButton size="small" onClick={() => toggleRowExpansion(index)}>
+                                                {expandedRow === index ? <ExpandLess /> : <ExpandMore />}
+                                            </IconButton>
+                                        </TableCell>
                                     </TableRow>
-                                </TableHead>
-                                <TableBody>
-                                    {admins.map((admin, index) => (
-                                        <React.Fragment key={admin.id}>
-                                            <TableRow hover>
-                                                <TableCell sx={{ minWidth: 100, wordBreak: 'break-word' }}>{admin.id}</TableCell>
-                                                <TableCell sx={{ minWidth: 200, wordBreak: 'break-word' }}>{admin.merchant_name}</TableCell>
-                                                <TableCell sx={{ minWidth: 150, wordBreak: 'break-word' }}>{admin.merchant_id}</TableCell>
-                                                <TableCell sx={{ minWidth: 250, wordBreak: 'break-word' }}>{admin.email}</TableCell>
-                                                <TableCell sx={{ minWidth: 250, wordBreak: 'break-word' }}>{admin.paymentUrl}</TableCell>
-                                                <TableCell sx={{ minWidth: 250, wordBreak: 'break-word' }}>{admin.merchant_url}</TableCell>
-                                                <TableCell sx={{ minWidth: 250, wordBreak: 'break-word' }}>{admin.gateway_account_type}</TableCell>
-                                                <TableCell sx={{ minWidth: 250, wordBreak: 'break-word' }}>{admin.payment_method} </TableCell>
-                                                <TableCell>
-                                                    <IconButton onClick={() => toggleRowExpansion(index)}>
-                                                        {expandedRow === index ? <ExpandLess /> : <ExpandMore />}
-                                                    </IconButton>
-                                                </TableCell>
-                                            </TableRow>
-                                            <TableRow>
-                                                <TableCell colSpan={5} sx={{ p: 0 }}>
-                                                    <Collapse in={expandedRow === index} timeout="auto" unmountOnExit>
-                                                        <Box sx={{ p: 2 }}>
-                                                            <Typography variant="subtitle1" gutterBottom>
-                                                                Merchant Secret: {admin.merchant_secret}
-                                                            </Typography>
-                                                        </Box>
-                                                    </Collapse>
-                                                </TableCell>
-                                            </TableRow>
-                                        </React.Fragment>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </ResponsiveTable>
 
-                    </RightSection>
-                </Grid>
-            </Grid>
+                                    <TableRow>
+                                        <TableCell colSpan={7} sx={{ p: 0, borderBottom: expandedRow === index ? undefined : 'none' }}>
+                                            <Collapse in={expandedRow === index} timeout="auto" unmountOnExit>
+                                                <Box sx={{ p: 2, bgcolor: 'action.hover' }}>
+                                                    <Grid container spacing={2}>
+                                                        <Grid item xs={12} md={6}>
+                                                            <Typography variant="caption" color="text.secondary">Checkout URL</Typography>
+                                                            <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+                                                                {admin.paymentUrl || '—'}
+                                                            </Typography>
+                                                        </Grid>
+                                                        <Grid item xs={12} md={6}>
+                                                            <Typography variant="caption" color="text.secondary">Merchant URL</Typography>
+                                                            <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
+                                                                {admin.merchant_url || '—'}
+                                                            </Typography>
+                                                        </Grid>
+                                                        <Grid item xs={12}>
+                                                            <Typography variant="caption" color="text.secondary">Merchant secret</Typography>
+                                                            {/* Kept masked by default - it signs payment requests. */}
+                                                            <Stack direction="row" alignItems="center" spacing={1}>
+                                                                <Typography variant="body2" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                                                                    {revealedSecret === admin.id
+                                                                        ? admin.merchant_secret
+                                                                        : '•'.repeat(Math.min(String(admin.merchant_secret || '').length, 24))}
+                                                                </Typography>
+                                                                <Button
+                                                                    size="small"
+                                                                    onClick={() => setRevealedSecret(revealedSecret === admin.id ? null : admin.id)}
+                                                                >
+                                                                    {revealedSecret === admin.id ? 'Hide' : 'Reveal'}
+                                                                </Button>
+                                                                <Button size="small" onClick={() => copy(admin.merchant_secret)}>Copy</Button>
+                                                            </Stack>
+                                                        </Grid>
+                                                    </Grid>
+                                                </Box>
+                                            </Collapse>
+                                        </TableCell>
+                                    </TableRow>
+                                </React.Fragment>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+            </Paper>
+
+            {/* The form only appears when you are actually adding, so the table
+                gets the full width the rest of the time. */}
+            <Dialog open={addOpen} onClose={() => setAddOpen(false)} maxWidth="sm" fullWidth>
+                <DialogTitle>Add merchant</DialogTitle>
+                <form onSubmit={handleSubmit} autoComplete="off">
+                    <DialogContent dividers>
+                        <Stack spacing={2}>
+                            {field('Email', email, setEmail, 'email', { type: 'email' })}
+                            {field('Password', password, setPassword, 'password', {
+                                type: showPassword ? 'text' : 'password',
+                                autoComplete: 'new-password',
+                                InputProps: {
+                                    endAdornment: (
+                                        <InputAdornment position="end">
+                                            <IconButton onClick={handleClickShowPassword} edge="end">
+                                                {showPassword ? <VisibilityOff /> : <Visibility />}
+                                            </IconButton>
+                                        </InputAdornment>
+                                    ),
+                                },
+                            })}
+                            {field('Merchant name', merchantName, setMerchantName, 'merchantName')}
+                            {field('Merchant ID', merchantID, setMerchantID, 'merchantID')}
+                            {field('Merchant secret', merchantSecret, setMerchantSecret, 'merchantSecret')}
+                            {field('Checkout URL', paymentUrl, setPaymentUrl, 'paymentUrl')}
+                            {field('Merchant URL', merchantUrl, setMerchantUrl, 'merchantUrl')}
+
+                            <FormControl fullWidth required error={!!errors.gatewayAccount}>
+                                <InputLabel id="gateway-account-type-label">Gateway account type</InputLabel>
+                                <Select
+                                    labelId="gateway-account-type-label"
+                                    label="Gateway account type"
+                                    value={gatewayAccount}
+                                    onChange={(e) => {
+                                        setGatewayAccount(e.target.value);
+                                        if (e.target.value === 'Universal') setPaymentMethod('');
+                                    }}
+                                >
+                                    <MenuItem value="Individual">Individual</MenuItem>
+                                    <MenuItem value="Universal">Universal</MenuItem>
+                                </Select>
+                                {errors.gatewayAccount && <FormHelperText>{errors.gatewayAccount}</FormHelperText>}
+                            </FormControl>
+
+                            {gatewayAccount === 'Individual' && (
+                                <FormControl fullWidth required error={!!errors.paymentMethod}>
+                                    <InputLabel id="payment-method-label">Payment method</InputLabel>
+                                    <Select
+                                        labelId="payment-method-label"
+                                        label="Payment method"
+                                        value={paymentMethod}
+                                        onChange={(e) => setPaymentMethod(e.target.value)}
+                                    >
+                                        <MenuItem value="MASTERCARD/VISA">MASTERCARD/VISA</MenuItem>
+                                        <MenuItem value="GCASH">GCASH</MenuItem>
+                                        <MenuItem value="INSTAPAY">INSTAPAY</MenuItem>
+                                    </Select>
+                                    {errors.paymentMethod && <FormHelperText>{errors.paymentMethod}</FormHelperText>}
+                                </FormControl>
+                            )}
+                        </Stack>
+                    </DialogContent>
+
+                    <DialogActions sx={{ px: 3, py: 2 }}>
+                        <Button onClick={() => setAddOpen(false)}>Cancel</Button>
+                        <Button type="submit" variant="contained">Add merchant</Button>
+                    </DialogActions>
+                </form>
+            </Dialog>
 
             <Snackbar open={snackbarOpen} autoHideDuration={6000} onClose={handleSnackbarClose}>
                 <Alert onClose={handleSnackbarClose} severity={snackbarSeverity} sx={{ width: '100%' }}>
