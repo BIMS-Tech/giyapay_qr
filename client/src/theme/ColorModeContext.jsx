@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { ThemeProvider, createTheme } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
 
 const STORAGE_KEY = 'giyapay-color-mode';
 
@@ -15,10 +14,6 @@ const readInitialMode = () => {
   } catch {
     // Private windows and blocked site data throw on access; fall through.
   }
-
-  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
-  }
   return 'light';
 };
 
@@ -31,7 +26,8 @@ export const ColorModeProvider = ({ children }) => {
     } catch {
       // Not fatal - the choice just will not survive a reload.
     }
-    // The dashboard header/sidebar are plain CSS, so they read the mode here.
+    // The header, sidebar and Bootstrap cards are plain CSS, so they read the
+    // mode from this attribute rather than from the MUI theme.
     document.documentElement.setAttribute('data-theme', mode);
   }, [mode]);
 
@@ -43,25 +39,22 @@ export const ColorModeProvider = ({ children }) => {
     [mode]
   );
 
+  // Deliberately minimal. The app was built against a bare createTheme(), and
+  // it layers Bootstrap, react-bootstrap and mdb-react-ui-kit on top of MUI.
+  // Overriding the palette, typography or baseline here changes the look of
+  // every existing screen, so this adds the colour mode and nothing else:
+  // in light mode the theme is identical to what shipped before.
+  //
+  // No CssBaseline either - MUI's reset fights Bootstrap's. Dark-mode page
+  // chrome is handled by the [data-theme="dark"] rules in dashboard.css.
   const theme = useMemo(
     () =>
       createTheme({
         palette: {
           mode,
-          primary: { main: '#ED1F79' },
-          secondary: { main: '#FBB03A' },
-          ...(mode === 'dark'
-            ? {
-                background: { default: '#12141a', paper: '#1b1f27' },
-                divider: 'rgba(255,255,255,0.12)',
-              }
-            : {
-                background: { default: '#f6f7f9', paper: '#ffffff' },
-              }),
-        },
-        typography: { fontFamily: 'Montserrat, sans-serif' },
-        components: {
-          MuiPaper: { styleOverrides: { root: { backgroundImage: 'none' } } },
+          ...(mode === 'dark' && {
+            background: { default: '#12141a', paper: '#1b1f27' },
+          }),
         },
       }),
     [mode]
@@ -69,10 +62,7 @@ export const ColorModeProvider = ({ children }) => {
 
   return (
     <ColorModeContext.Provider value={value}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        {children}
-      </ThemeProvider>
+      <ThemeProvider theme={theme}>{children}</ThemeProvider>
     </ColorModeContext.Provider>
   );
 };

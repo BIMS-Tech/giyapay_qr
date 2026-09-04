@@ -128,20 +128,21 @@ const CoAdminDashboard = () => {
             <Link to="/co-admin-dashboard/manage-qr-ca" onClick={() => handleRouteClick("/co-admin-dashboard/manage-qr-ca")}> Manage Qr</Link>
           </nav>
 
-          <ThemeToggle />
-
-          <IconButton
-            edge="end"
-            aria-label="account of current user"
-            aria-controls="primary-search-account-menu"
-            aria-haspopup="true"
-            onClick={handleProfileMenuOpen}
-            color="inherit"
-            className="profile-icon"
-            sx={{ display: { xs: "none", md: "flex" } }}
-          >
-            <AccountCircle fontSize="large" />
-          </IconButton>
+          <span style={{ display: "flex", alignItems: "center" }}>
+            <ThemeToggle />
+            <IconButton
+              edge="end"
+              aria-label="account of current user"
+              aria-controls="primary-search-account-menu"
+              aria-haspopup="true"
+              onClick={handleProfileMenuOpen}
+              color="inherit"
+              className="profile-icon"
+              sx={{ display: { xs: "none", md: "flex" } }}
+            >
+              <AccountCircle fontSize="large" />
+            </IconButton>
+          </span>
 
           <Menu
             anchorEl={anchorEl}
