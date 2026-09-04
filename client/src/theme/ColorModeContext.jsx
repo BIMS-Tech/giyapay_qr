@@ -26,9 +26,12 @@ export const ColorModeProvider = ({ children }) => {
     } catch {
       // Not fatal - the choice just will not survive a reload.
     }
-    // The header, sidebar and Bootstrap cards are plain CSS, so they read the
-    // mode from this attribute rather than from the MUI theme.
+    // Two attributes, two systems. data-theme drives this app's own CSS
+    // tokens (css/theme.css); data-bs-theme is Bootstrap 5.3's native dark
+    // mode, which repaints every Bootstrap component - cards, tables, forms,
+    // modals, dropdowns - without us hand-writing an override for each.
     document.documentElement.setAttribute('data-theme', mode);
+    document.documentElement.setAttribute('data-bs-theme', mode);
   }, [mode]);
 
   const value = useMemo(

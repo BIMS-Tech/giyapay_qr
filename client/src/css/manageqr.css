@@ -1,13 +1,13 @@
 body {
     margin: 0;
     font-family: Arial, sans-serif;
-    background-color: #f0f0f0;
-    color: #333;
+    background-color: var(--app-hover);
+    color: var(--app-text);
 }
 
 h2 {
     text-align: center;
-    color: #333;
+    color: var(--app-text);
 }
 
 .notification {
@@ -25,7 +25,7 @@ h2 {
     width: 80%;
     margin: 20px auto;
     border-collapse: collapse;
-    background-color: #fff;
+    background-color: var(--app-surface);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
@@ -36,7 +36,7 @@ h2 {
 }
 
 .qr-table th {
-    background-color: #f5f5f5;
+    background-color: var(--app-surface-muted);
 }
 
 .qr-table img.qr-image {
@@ -71,7 +71,7 @@ h2 {
 }
 
 .modal-content {
-    background-color: #fff;
+    background-color: var(--app-surface);
     padding: 20px;
     border: 1px solid #888;
     width: 500px;
@@ -89,7 +89,7 @@ h2 {
 }
 
 .close:hover, .close:focus {
-    color: #000;
+    color: var(--app-text);
     text-decoration: none;
     cursor: pointer;
 }

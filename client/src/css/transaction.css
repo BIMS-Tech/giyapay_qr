@@ -1,5 +1,5 @@
 .transaction-page {
-  background-color: #f8f9fa;
+  background-color: var(--app-surface-alt);
   padding: 20px;
   border-radius: 10px;
   margin-top: 20px;
@@ -13,7 +13,7 @@
 }
 
 .transaction-details {
-  background-color: #ffffff;
+  background-color: var(--app-surface);
   border-radius: 10px;
   padding: 20px;
   margin-bottom: 20px;
@@ -32,7 +32,7 @@
 
 .transaction-history table thead th {
   background-color: #e9ecef;
-  color: #333;
+  color: var(--app-text);
   font-weight: bold;
 }
 

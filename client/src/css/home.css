@@ -12,7 +12,7 @@ body {
 .card {
   transition: transform 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
   border-radius: 15px;
-  background-color: #ffffff;
+  background-color: var(--app-surface);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
   padding: 30px;
   border: none;
@@ -34,7 +34,7 @@ body {
 .card-title {
   font-size: 1.25rem;
   font-weight: bold;
-  color: #4f4f4f;
+  color: var(--app-text-secondary);
   margin-bottom: 0.5rem;
 }
 
@@ -42,7 +42,7 @@ body {
 .card-text {
   font-size: 1.75rem;
   font-weight: 700;
-  color: #828282;
+  color: var(--app-text-muted);
   margin-top: 0.5rem;
 }
 

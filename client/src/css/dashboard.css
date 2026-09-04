@@ -8,7 +8,7 @@ body {
 
 .dashboard-header {
   width: 100%;
-  background-color: #f8f9fa;
+  background-color: var(--app-surface-alt);
   padding: 10px 0;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   position: relative;
@@ -26,7 +26,7 @@ body {
   display: flex;
   align-items: center;
   text-decoration: none;
-  color: #333;
+  color: var(--app-text);
 }
 
 .brand-text {
@@ -41,19 +41,19 @@ body {
 
 .nav-links a {
   text-decoration: none;
-  color: #333;
+  color: var(--app-text);
   font-size: 1rem;
   font-weight: 500;
 }
 
 .profile-icon {
-  color: #333;
+  color: var(--app-text);
 }
 
 .dashboard-content {
   width: 90%;
   margin: 20px auto;
-  background-color: #fff;
+  background-color: var(--app-surface);
   padding: 20px;
   border-radius: 8px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
@@ -112,12 +112,12 @@ body {
 .drawer-menu-item {
   padding: 10px 0;
   border-bottom: 1px solid #ddd;
-  color: #333;
+  color: var(--app-text);
   transition: background-color 0.3s ease;
 }
 
 .drawer-menu-item:hover {
-  background-color: #f0f0f0;
+  background-color: var(--app-hover);
   color: #007bff;
 }
 
@@ -128,39 +128,4 @@ body {
 
 html {
   overflow-y: scroll;
-}
-
-/* ---- Dark mode ----------------------------------------------------------
-   The header, sidebar and Bootstrap cards are plain CSS, so they follow the
-   data-theme attribute ColorModeContext stamps on <html>. MUI components take
-   their colors from the ThemeProvider instead, so they need nothing here. */
-
-:root[data-theme="dark"] body,
-:root[data-theme="dark"] .dashboard-container {
-  background-color: #12141a;
-  color: #e6e8ee;
-}
-
-:root[data-theme="dark"] .dashboard-header {
-  background-color: #1b1f27;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-}
-
-:root[data-theme="dark"] .brand,
-:root[data-theme="dark"] .brand-text,
-:root[data-theme="dark"] .nav-links a,
-:root[data-theme="dark"] .profile-icon {
-  color: #e6e8ee;
-}
-
-:root[data-theme="dark"] .card,
-:root[data-theme="dark"] .overview-card {
-  background-color: #1b1f27;
-  color: #e6e8ee;
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
-:root[data-theme="dark"] .card-title,
-:root[data-theme="dark"] .card-text {
-  color: #e6e8ee;
 }

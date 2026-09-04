@@ -1,0 +1,42 @@
+/* Application theme tokens.
+ *
+ * The app's own stylesheets used to hardcode surface and text colours, which
+ * is why switching to dark left the page chrome light while MUI components
+ * went dark - white panels with near-white text on them.
+ *
+ * Light values here are identical to the colours that were hardcoded before,
+ * so light mode renders exactly as it always has. Only the dark block is new.
+ *
+ * Bootstrap components are not themed here: Bootstrap 5.3 has native dark
+ * mode, driven by the data-bs-theme attribute that ColorModeContext sets.
+ * MUI components follow palette.mode from the same provider.
+ */
+
+:root {
+  --app-bg: #ffffff;
+  --app-surface: #ffffff;
+  --app-surface-alt: #f8f9fa;
+  --app-surface-muted: #f5f5f5;
+  --app-text: #333333;
+  --app-text-secondary: #4f4f4f;
+  --app-text-muted: #828282;
+  --app-shadow: rgba(0, 0, 0, 0.1);
+  --app-hover: #f0f0f0;
+}
+
+:root[data-theme="dark"] {
+  --app-bg: #12141a;
+  --app-surface: #1b1f27;
+  --app-surface-alt: #1b1f27;
+  --app-surface-muted: #232833;
+  --app-text: #e6e8ee;
+  --app-text-secondary: #b8bdc9;
+  --app-text-muted: #8b91a0;
+  --app-shadow: rgba(0, 0, 0, 0.5);
+  --app-hover: #232833;
+}
+
+body {
+  background-color: var(--app-bg);
+  color: var(--app-text);
+}
