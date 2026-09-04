@@ -1,19 +1,19 @@
 import express from 'express';
-import { addAdmin, countAdmins, getAllAdmins,adminEmailCheck } from '../controller/adminController.js';
+import { addAdmin, countAdmins, getAllAdmins, adminEmailCheck } from '../controller/adminController.js';
+import { authenticateToken } from '../middleware/authenticate.js';
 
 const router = express.Router();
 
-// Route for adding an admin
-router.post('/add', addAdmin);
+// Every route here was previously unauthenticated. /all returned every
+// merchant_secret to anonymous callers, and those secrets sign the payment
+// gateway requests, so this was a live credential leak. /add let anyone
+// create a merchant admin account.
+router.post('/add', authenticateToken, addAdmin);
 
-// Route for counting admins
-router.get('/count', countAdmins);
+router.get('/count', authenticateToken, countAdmins);
 
-//get list
-router.get('/all', getAllAdmins);
+router.get('/all', authenticateToken, getAllAdmins);
 
-//email check
-
-router.get('/check-email/:email', adminEmailCheck)
+router.get('/check-email/:email', authenticateToken, adminEmailCheck);
 
 export default router;

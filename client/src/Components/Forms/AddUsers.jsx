@@ -85,7 +85,9 @@ const AddUser = () => {
     if (newValue) {
       try {
         const response = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/user/check-email/${newValue}`);
-        const adminResponse = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/admin/check-email/${newValue}`);
+        const adminResponse = await axios.get(`${import.meta.env.VITE_BACKEND_URL}/admin/check-email/${newValue}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+        });
 
         if (response.data.exists || adminResponse.data.exists) {
           setEmailTaken(true);

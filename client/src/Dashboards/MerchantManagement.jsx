@@ -163,7 +163,9 @@ const MerchantManagement = () => {
         };
 
         try {
-            const response = await axios.post(`${backendUrl}/admin/add`, formData);
+            const response = await axios.post(`${backendUrl}/admin/add`, formData, {
+                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+            });
 
             setSnackbarMessage(response.data.message);
             setSnackbarSeverity('success');
