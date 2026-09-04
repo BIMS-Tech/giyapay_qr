@@ -129,3 +129,38 @@ body {
 html {
   overflow-y: scroll;
 }
+
+/* ---- Dark mode ----------------------------------------------------------
+   The header, sidebar and Bootstrap cards are plain CSS, so they follow the
+   data-theme attribute ColorModeContext stamps on <html>. MUI components take
+   their colors from the ThemeProvider instead, so they need nothing here. */
+
+:root[data-theme="dark"] body,
+:root[data-theme="dark"] .dashboard-container {
+  background-color: #12141a;
+  color: #e6e8ee;
+}
+
+:root[data-theme="dark"] .dashboard-header {
+  background-color: #1b1f27;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+:root[data-theme="dark"] .brand,
+:root[data-theme="dark"] .brand-text,
+:root[data-theme="dark"] .nav-links a,
+:root[data-theme="dark"] .profile-icon {
+  color: #e6e8ee;
+}
+
+:root[data-theme="dark"] .card,
+:root[data-theme="dark"] .overview-card {
+  background-color: #1b1f27;
+  color: #e6e8ee;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-theme="dark"] .card-title,
+:root[data-theme="dark"] .card-text {
+  color: #e6e8ee;
+}

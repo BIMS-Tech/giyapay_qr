@@ -19,6 +19,7 @@ import { AccountCircle, Menu as MenuIcon, Close as CloseIcon } from "@mui/icons-
 import axios from "axios";
 import "bootstrap-icons/font/bootstrap-icons.css";
 import "../css/dashboard.css";
+import ThemeToggle from '../Components/ThemeToggle';
 
 const CoAdminDashboard = () => {
   const navigate = useNavigate();
@@ -126,6 +127,8 @@ const CoAdminDashboard = () => {
             <Link to="/co-admin-dashboard" onClick={() => handleRouteClick("/co-admin-dashboard")}>Dashboard</Link>
             <Link to="/co-admin-dashboard/manage-qr-ca" onClick={() => handleRouteClick("/co-admin-dashboard/manage-qr-ca")}> Manage Qr</Link>
           </nav>
+
+          <ThemeToggle />
 
           <IconButton
             edge="end"

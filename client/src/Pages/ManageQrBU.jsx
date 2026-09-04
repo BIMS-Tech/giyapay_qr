@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Box, Button, Container, Modal, Paper, Table, TableBody, TableCell, TableContainer, TableHead,
-  TablePagination, TableRow, Typography, IconButton, Tooltip, CircularProgress
+  TablePagination, TableRow, Typography, IconButton, Tooltip, CircularProgress, Alert
 } from '@mui/material';
 import { Visibility as ViewIcon, } from '@mui/icons-material';
 import axios from 'axios';
@@ -11,136 +11,106 @@ import RippleLoader from '../Components/Loader';
 
 const ManageQrBU = () => {
   const [qrCodes, setQrCodes] = useState([]);
-  const [filteredQrCodes, setFilteredQrCodes] = useState([]);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [branches, setBranches] = useState([]);
-  const [users, setUsers] = useState([]);
+  const [rowCount, setRowCount] = useState(0);
   const [selectedQr, setSelectedQr] = useState(null);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(5);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
   const [openView, setOpenView] = useState(false);
-  const [userType, setUserType] = useState('');
   const [loading, setLoading] = useState(true);
-  const [socket, setSocket] = useState(null);
+  const [error, setError] = useState('');
+  const socketRef = useRef(null);
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
+  const authHeader = useCallback(
+    () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }),
+    []
+  );
+
+  const queryParams = useMemo(
+    () => ({ page, pageSize: rowsPerPage }),
+    [page, rowsPerPage]
+  );
+
+  const formatRow = (qr) => ({
+    ...qr,
+    user_name: qr.user ? qr.user.username : 'Unknown User',
+    branch_name: qr.branch ? qr.branch.branch_name : 'Unknown Branch',
+    created_at: qr.createdAt ? new Date(qr.createdAt).toLocaleString() : 'N/A',
+    updated_at: qr.updatedAt ? new Date(qr.updatedAt).toLocaleString() : 'N/A',
+  });
+
+  // Socket lives in a ref: holding it in state made the fetch effect re-run on
+  // every (re)connect, loading the list twice per mount.
   useEffect(() => {
-    const newSocket = io(backendUrl, {
-      auth: {
-        token: localStorage.getItem('token'),
-      },
+    // Cloud Run has no session affinity, so Socket.IO's polling handshake can
+    // land on an instance that never saw the session and 400s.
+    const socket = io(backendUrl, {
+      auth: { token: localStorage.getItem('token') },
+      transports: ['websocket'],
     });
+    socketRef.current = socket;
 
-    setSocket(newSocket);
+    const applyUpdate = (data) => {
+      const updated = formatRow(data.qrCode);
+      setQrCodes((prev) =>
+        prev.map((qr) => (qr.id === updated.id ? { ...qr, ...updated } : qr))
+      );
+    };
 
-    // Clean up the connection when the component unmounts
+    const applyDelete = (deletedQrCodeId) => {
+      setQrCodes((prev) => prev.filter((qr) => qr.id !== deletedQrCodeId));
+    };
+
+    socket.on('qr-code-updated', applyUpdate);
+    socket.on('qr-code-deleted', applyDelete);
+
     return () => {
-      if (newSocket) {
-        newSocket.disconnect();
-      }
+      socket.off('qr-code-updated', applyUpdate);
+      socket.off('qr-code-deleted', applyDelete);
+      socket.disconnect();
+      socketRef.current = null;
     };
   }, [backendUrl]);
 
+  // The server scopes to this user's branch and paginates, so the page no
+  // longer fetches the profile or filters the whole table in the browser.
   useEffect(() => {
+    let cancelled = false;
+
     const fetchQrCodes = async () => {
       setLoading(true);
+      setError('');
       try {
-        const token = localStorage.getItem('token');
-
-        // Fetch user profile (which includes branch_id)
-        const userResponse = await axios.get(`${backendUrl}/users/profile`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const { data } = await axios.get(`${backendUrl}/api/qr-codes/get_qr_bu`, {
+          params: queryParams,
+          ...authHeader(),
         });
-        const userData = userResponse.data;
-        const branchId = userData.branch_id;
-
-        // If branch ID is missing, throw an error (this page should be accessed by branch users only)
-        if (!branchId) {
-          console.error('Error: No branch ID found for the user.');
-          return;
+        if (cancelled) return;
+        setQrCodes((data.rows || []).map(formatRow));
+        setRowCount(data.count || 0);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Error fetching QR codes:', err);
+        setQrCodes([]);
+        setRowCount(0);
+        if (err.response?.status === 401) {
+          setError('Your session has expired. Please sign in again.');
+        } else if (err.response?.status === 403) {
+          setError('You are not assigned to any branch. Please contact support.');
+        } else {
+          setError('Could not load QR codes. Please try again.');
         }
-
-        // Fetch QR codes for the user's branch
-        const qrCodeResponse = await axios.get(`${backendUrl}/api/qr-codes/get_qr_bu`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-
-        // Format and filter the QR codes for the user's branch
-        const formattedQrCodes = qrCodeResponse.data
-          .filter((qr) => qr.branch_id === branchId)
-          .map((qr) => ({
-            ...qr,
-            user_name: qr.user ? qr.user.username : 'Unknown User',
-            branch_name: qr.branch ? qr.branch.branch_name : 'Unknown Branch',
-            created_at: qr.createdAt ? new Date(qr.createdAt).toLocaleString() : 'N/A',
-            updated_at: qr.updatedAt ? new Date(qr.updatedAt).toLocaleString() : 'N/A',
-          }));
-
-        // Update state with filtered and formatted QR codes
-        setQrCodes(formattedQrCodes);
-        setFilteredQrCodes(formattedQrCodes);
-
-      } catch (error) {
-        console.error('Error fetching QR codes or user data:', error);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
+
     fetchQrCodes();
-
-    // Listen for QR code updates from the server
-    if (socket) {
-      socket.on('qr-code-updated', (data) => {
-        const newQrCode = data.qrCode;
-        const formattedQrCode = {
-          ...newQrCode,
-          created_at: newQrCode.createdAt ? new Date(newQrCode.createdAt).toLocaleString() : 'N/A',
-          updated_at: newQrCode.updatedAt ? new Date(newQrCode.updatedAt).toLocaleString() : 'N/A',
-        };
-
-        setQrCodes((prevQrCodes) => {
-          const existingQr = prevQrCodes.find((qr) => qr.id === formattedQrCode.id);
-          if (existingQr) {
-            // If the QR code exists, update it
-            return prevQrCodes.map((qr) =>
-              qr.id === formattedQrCode.id ? { ...qr, ...formattedQrCode } : qr
-            );
-          } else {
-            return prevQrCodes;
-          }
-        });
-
-        setFilteredQrCodes((prevFiltered) => {
-          const existingFilteredQr = prevFiltered.find((qr) => qr.id === formattedQrCode.id);
-          if (existingFilteredQr) {
-            return prevFiltered.map((qr) =>
-              qr.id === formattedQrCode.id ? { ...qr, ...formattedQrCode } : qr
-            );
-          } else {
-            return prevFiltered;
-          }
-        });
-      });
-
-      socket.on('qr-code-deleted', (deletedQrCodeId) => {
-        console.log("QR Code Deleted Event Received:", deletedQrCodeId);
-
-        setQrCodes((prevQrCodes) => prevQrCodes.filter((qr) => qr.id !== deletedQrCodeId));
-        setFilteredQrCodes((prevFiltered) =>
-          prevFiltered.filter((qr) => qr.id !== deletedQrCodeId)
-        );
-      });
-    }
-
-    // Cleanup event listeners on component unmount or socket change
     return () => {
-      if (socket) {
-        socket.off('qr-code-updated');
-        socket.off('qr-code-deleted');
-      }
+      cancelled = true;
     };
-  }, [socket, backendUrl]);
+  }, [backendUrl, queryParams, authHeader]);
 
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
@@ -161,7 +131,7 @@ const ManageQrBU = () => {
     setSelectedQr(null);
   };
 
-  if (loading) {
+  if (loading && qrCodes.length === 0) {
     return (
       <Box
         display="flex"
@@ -180,6 +150,12 @@ const ManageQrBU = () => {
         <Typography variant="h4" gutterBottom sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>
           Manage QR Codes
         </Typography>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2, fontFamily: 'Montserrat, sans-serif' }}>
+            {error}
+          </Alert>
+        )}
+
         <TableContainer component={Paper}>
           <Table>
             <TableHead>
@@ -196,7 +172,7 @@ const ManageQrBU = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredQrCodes.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((qr, index) => (
+              {qrCodes.map((qr, index) => (
                 <TableRow key={qr.id || `qr-${index}`}>
                   <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{qr.id}</TableCell>
                   <TableCell>
@@ -223,9 +199,9 @@ const ManageQrBU = () => {
           </Table>
         </TableContainer>
         <TablePagination
-          rowsPerPageOptions={[5, 10, 25]}
+          rowsPerPageOptions={[25, 50, 100]}
           component="div"
-          count={filteredQrCodes.length}
+          count={rowCount}
           rowsPerPage={rowsPerPage}
           page={page}
           onPageChange={handleChangePage}

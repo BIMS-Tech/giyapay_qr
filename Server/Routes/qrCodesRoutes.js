@@ -1,5 +1,5 @@
 import express from 'express';
-import { createQrCode,handleSuccessCallback, handleCallback,getAdminQrCodes,checkInvoice,getFilteredQrCodes,getQrCodesBU,getFilteredQrCodesCA,countQrCodesByAdmin,getPaymentDetailsByInvoice } from '../controller/qrCodesController.js';
+import { createQrCode,handleSuccessCallback, handleCallback,getAdminQrCodes,exportAdminQrCodes,checkInvoice,getFilteredQrCodes,getQrCodesBU,getFilteredQrCodesCA,countQrCodesByAdmin,getPaymentDetailsByInvoice } from '../controller/qrCodesController.js';
 import models from '../model/index.js';
 import { authenticateToken } from '../middleware/authenticate.js';
 
@@ -9,6 +9,9 @@ const router = express.Router();
 
 // Routes for QR code management
 router.get('/get', authenticateToken, getAdminQrCodes,);
+
+// Full result set for CSV export (capped server-side)
+router.get('/export', authenticateToken, exportAdminQrCodes);
 
 // Routes for QR code management for Branch user
 router.get('/get_qr_bu', authenticateToken, getQrCodesBU);

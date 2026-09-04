@@ -19,6 +19,7 @@ import { AccountCircle, Menu as MenuIcon, Close as CloseIcon } from "@mui/icons-
 import axios from "axios";
 import "bootstrap-icons/font/bootstrap-icons.css";
 import "../css/dashboard.css";
+import ThemeToggle from '../Components/ThemeToggle';
 
 const BranchDashboard = () => {
   const navigate = useNavigate();
@@ -126,6 +127,8 @@ const BranchDashboard = () => {
             <Link to="/branch-dashboard/manage-qrbu" onClick={() => handleRouteClick("/branch-dashboard/manage-qrbu")}> Manage Qr</Link>
             <Link to="/branch-dashboard/add-qr" onClick={() => handleRouteClick("/branch-dashboard/add-qr")}>Add Qr</Link>
           </nav>
+
+          <ThemeToggle />
 
           <IconButton
             edge="end"

@@ -19,6 +19,7 @@ import { AccountCircle, Menu as MenuIcon, Close as CloseIcon } from "@mui/icons-
 import axios from "axios";
 import "bootstrap-icons/font/bootstrap-icons.css";
 import "../css/dashboard.css";
+import ThemeToggle from '../Components/ThemeToggle';
 
 const SuperDashboard = () => {
   const navigate = useNavigate();
@@ -134,6 +135,8 @@ const SuperDashboard = () => {
             <Link to="/super-dashboard/manage-qr" onClick={() => handleRouteClick("/super-dashboard/manage-qr")}>QR List</Link>
             <Link to="/super-dashboard/upload" onClick={() => handleRouteClick("/super-dashboard/upload")}>Batch Upload</Link>
           </nav>
+
+          <ThemeToggle />
 
           <IconButton
             edge="end"

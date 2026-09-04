@@ -1,0 +1,161 @@
+name: Deploy
+
+# Push to main deploys to production. The verify job gates it: a broken build
+# never reaches the live payment system.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GCP_PROJECT: giyapay-qr-test
+  GCP_REGION: asia-east2
+  SERVICE_NAME: giyapayqrserver
+  CLOUDSQL_INSTANCE: giyapay-qr-test:asia-east2:giyapayqr
+
+jobs:
+  verify:
+    name: Verify build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install server dependencies
+        working-directory: Server
+        run: npm ci
+
+      - name: Syntax-check server
+        working-directory: Server
+        run: |
+          # Catches the parse errors that would otherwise crash the container
+          # on boot. There is no test suite yet, so this is the floor.
+          find . -name '*.js' -not -path './node_modules/*' -print0 \
+            | xargs -0 -n1 node --check
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Build client
+        working-directory: client
+        env:
+          VITE_BACKEND_URL: ${{ secrets.VITE_BACKEND_URL }}
+          VITE_FRONTEND_URL: ${{ secrets.VITE_FRONTEND_URL }}
+        run: npm run build
+
+      - name: Upload client build
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist
+          retention-days: 5
+
+  deploy-server:
+    name: Deploy server to Cloud Run
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
+
+      - name: Require deploy secrets
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_DIALECT: ${{ secrets.DB_DIALECT }}
+          CORS_ORIGIN: ${{ secrets.CORS_ORIGIN }}
+        run: |
+          # --set-env-vars replaces the service's whole environment. If a secret
+          # is unset it would be written as an empty string and take production
+          # down, so refuse to deploy at all rather than deploy a broken config.
+          missing=""
+          for name in JWT_SECRET DB_NAME DB_USER DB_PASSWORD DB_HOST DB_DIALECT CORS_ORIGIN; do
+            if [ -z "$(printenv "$name")" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Refusing to deploy - missing repository secrets:$missing"
+            echo "Set them under Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          echo "All required deploy secrets are present."
+
+      - name: Deploy to Cloud Run
+        run: |
+          # --set-env-vars REPLACES the whole env set, which is deliberate: it
+          # clears the two misnamed vars (' DB_HOST', ' CORS_ORIGIN' - leading
+          # spaces meant process.env never saw them) and supplies DB_USER,
+          # which was previously only present in the .env baked into the image.
+          # --add-cloudsql-instances must stay: the DB is reached over the
+          # Cloud SQL unix socket, and omitting it detaches the instance.
+          gcloud run deploy "$SERVICE_NAME" \
+            --source ./Server \
+            --project "$GCP_PROJECT" \
+            --region "$GCP_REGION" \
+            --platform managed \
+            --allow-unauthenticated \
+            --session-affinity \
+            --cpu-boost \
+            --memory 1Gi \
+            --cpu 1 \
+            --min-instances 0 \
+            --max-instances 100 \
+            --timeout 300 \
+            --add-cloudsql-instances "$CLOUDSQL_INSTANCE" \
+            --set-env-vars "JWT_SECRET=${{ secrets.JWT_SECRET }},DB_NAME=${{ secrets.DB_NAME }},DB_USER=${{ secrets.DB_USER }},DB_PASSWORD=${{ secrets.DB_PASSWORD }},DB_HOST=${{ secrets.DB_HOST }},DB_DIALECT=${{ secrets.DB_DIALECT }},CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}"
+
+      - name: Show deployed revision
+        run: |
+          gcloud run services describe "$SERVICE_NAME" \
+            --project "$GCP_PROJECT" --region "$GCP_REGION" \
+            --format='value(status.latestReadyRevisionName,status.url)'
+
+  deploy-client:
+    name: Deploy client
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        working-directory: client
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "VERCEL_TOKEN not set - skipping."
+            echo "If Vercel's Git integration is connected to this repo it has"
+            echo "already deployed this commit, and nothing more is needed."
+            exit 0
+          fi
+          npx --yes vercel@latest pull --yes --environment=production --token "$VERCEL_TOKEN"
+          npx --yes vercel@latest build --prod --token "$VERCEL_TOKEN"
+          npx --yes vercel@latest deploy --prebuilt --prod --token "$VERCEL_TOKEN"

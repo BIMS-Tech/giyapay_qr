@@ -12,6 +12,7 @@ import bodyParser from 'body-parser';
 import http from 'http';
 import { Server } from 'socket.io';
 import uploadRoutes from './Routes/uploadRoutes.js'
+import analyticsRoutes from './Routes/analyticsRoutes.js';
 import { authenticateToken } from './middleware/authenticate.js';
 import User from './model/userModel.js';
 import { Op } from 'sequelize';
@@ -26,7 +27,11 @@ const io = new Server(server, {
     origin: process.env.CORS_ORIGIN,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials: true,
-  }
+  },
+  // Cloud Run load-balances across instances with no session affinity, so a
+  // polling request carrying a sid can reach an instance that never saw that
+  // session and answers 400. Websocket holds one connection to one instance.
+  transports: ['websocket'],
 });
 
 app.use(bodyParser.json());
@@ -48,6 +53,7 @@ app.use('/admin', adminRoutes);
 app.use('/branches', branchesRoutes);
 app.use('/api/qr-codes', qrCodesRoute);
 app.use('/upload', uploadRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 //--------------------------------------------------------------Temporary users section for fast use issues will be fixed later----------------------------------------------------
 

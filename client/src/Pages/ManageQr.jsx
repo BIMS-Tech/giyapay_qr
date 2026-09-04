@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Box, Button, Container, Modal, Paper, Table, TableBody, TableCell, TableContainer, TableHead,
-  TablePagination, TableRow, Typography, IconButton, Tooltip, TextField, MenuItem, Select, InputLabel, FormControl, CircularProgress, Autocomplete
+  TablePagination, TableRow, Typography, IconButton, Tooltip, TextField, MenuItem, Select, InputLabel, FormControl, CircularProgress, Autocomplete, Alert
 } from '@mui/material';
 import {
   Delete as DeleteIcon,
@@ -10,7 +10,6 @@ import {
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
-import { CSVLink } from 'react-csv';
 import QRCode from 'qrcode.react';
 import { io } from 'socket.io-client';
 import RippleLoader from '../Components/Loader';
@@ -18,168 +17,140 @@ import CustomTextField from '../Components/Mui/CustomTextField';
 
 const ManageQr = () => {
   const [qrCodes, setQrCodes] = useState([]);
-  const [filteredQrCodes, setFilteredQrCodes] = useState([]);
+  const [rowCount, setRowCount] = useState(0);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [branches, setBranches] = useState([]);
   const [users, setUsers] = useState([]);
   const [selectedQr, setSelectedQr] = useState(null);
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(5);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
   const [openView, setOpenView] = useState(false);
-  const [openDelete, setOpenDelete] = useState(false);
   const [branchFilter, setBranchFilter] = useState('');
   const [userFilter, setUserFilter] = useState('');
   const [dateFilter, setDateFilter] = useState({
     startDate: '',
     endDate: '',
   });
-  const [userType, setUserType] = useState('');
   const [loading, setLoading] = useState(true);
-  const [socket, setSocket] = useState(null);
+  const [error, setError] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const socketRef = useRef(null);
 
   const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
+  const authHeader = useCallback(
+    () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }),
+    []
+  );
+
+  // Search used to fire a full query per keystroke; wait for a pause instead.
   useEffect(() => {
-    const newSocket = io(backendUrl, {
-      auth: {
-        token: localStorage.getItem('token'),
-      },
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setPage(0);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const queryParams = useMemo(
+    () => ({
+      page,
+      pageSize: rowsPerPage,
+      searchTerm: debouncedSearch || undefined,
+      branchFilter: branchFilter || undefined,
+      userFilter: userFilter || undefined,
+      startDate: dateFilter.startDate || undefined,
+      endDate: dateFilter.endDate || undefined,
+    }),
+    [page, rowsPerPage, debouncedSearch, branchFilter, userFilter, dateFilter]
+  );
+
+  const formatRow = (qr) => ({
+    ...qr,
+    user_name: qr.user ? qr.user.username : 'Unknown User',
+    branch_name: qr.branch ? qr.branch.branch_name : 'Unknown Branch',
+    created_at: qr.createdAt ? new Date(qr.createdAt).toLocaleString() : 'N/A',
+    updated_at: qr.updatedAt ? new Date(qr.updatedAt).toLocaleString() : 'N/A',
+  });
+
+  // Socket lives in a ref: keeping it in state made the fetch effect re-run on
+  // every (re)connect, so the list was loaded twice on each mount.
+  useEffect(() => {
+    // Cloud Run has no session affinity by default, so Socket.IO's polling
+    // handshake lands on a different instance than its session and 400s.
+    // Going straight to websocket skips the polling upgrade entirely.
+    const socket = io(backendUrl, {
+      auth: { token: localStorage.getItem('token') },
+      transports: ['websocket'],
     });
+    socketRef.current = socket;
 
-    setSocket(newSocket);
+    const applyUpdate = (data) => {
+      const updated = formatRow(data.qrCode);
+      setQrCodes((prev) =>
+        prev.map((qr) => (qr.id === updated.id ? { ...qr, ...updated } : qr))
+      );
+    };
 
-    // Clean up the connection when the component unmounts
+    const applyDelete = (deletedQrCodeId) => {
+      setQrCodes((prev) => prev.filter((qr) => qr.id !== deletedQrCodeId));
+    };
+
+    socket.on('qr-code-updated', applyUpdate);
+    socket.on('qr-code-deleted', applyDelete);
+
     return () => {
-      if (newSocket) {
-        newSocket.disconnect();
-      }
+      socket.off('qr-code-updated', applyUpdate);
+      socket.off('qr-code-deleted', applyDelete);
+      socket.disconnect();
+      socketRef.current = null;
     };
   }, [backendUrl]);
 
+  // One request per view. The server paginates and filters, so the browser
+  // holds one page of rows instead of the whole table.
   useEffect(() => {
+    let cancelled = false;
+
     const fetchQrCodes = async () => {
       setLoading(true);
+      setError('');
       try {
-        const token = localStorage.getItem('token');
-        const qrCodeResponse = await axios.get(`${backendUrl}/api/qr-codes/get`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const { data } = await axios.get(`${backendUrl}/api/qr-codes/get`, {
+          params: queryParams,
+          ...authHeader(),
         });
-
-        const formattedQrCodes = qrCodeResponse.data.map((qr) => ({
-          ...qr,
-          user_name: qr.user ? qr.user.username : 'Unknown User',
-          branch_name: qr.branch ? qr.branch.branch_name : 'Unknown Branch',
-          created_at: qr.createdAt ? new Date(qr.createdAt).toLocaleString() : 'N/A',
-          updated_at: qr.updatedAt ? new Date(qr.updatedAt).toLocaleString() : 'N/A',
-        }));
-
-        setQrCodes(formattedQrCodes);
-        setFilteredQrCodes(formattedQrCodes);
-      } catch (error) {
-        console.error('Error fetching QR codes:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchQrCodes();
-
-    // Listen for QR code updates from the server
-    if (socket) {
-      socket.on('qr-code-updated', (data) => {
-        const newQrCode = data.qrCode;
-        const formattedQrCode = {
-          ...newQrCode,
-          created_at: newQrCode.createdAt ? new Date(newQrCode.createdAt).toLocaleString() : 'N/A',
-          updated_at: newQrCode.updatedAt ? new Date(newQrCode.updatedAt).toLocaleString() : 'N/A',
-        };
-
-        setQrCodes((prevQrCodes) => {
-          const existingQr = prevQrCodes.find((qr) => qr.id === formattedQrCode.id);
-          if (existingQr) {
-            return prevQrCodes.map((qr) =>
-              qr.id === formattedQrCode.id ? { ...qr, ...formattedQrCode } : qr
-            );
-          } else {
-            return prevQrCodes;
-          }
-        });
-
-        setFilteredQrCodes((prevFiltered) => {
-          const existingFilteredQr = prevFiltered.find((qr) => qr.id === formattedQrCode.id);
-          if (existingFilteredQr) {
-            return prevFiltered.map((qr) =>
-              qr.id === formattedQrCode.id ? { ...qr, ...formattedQrCode } : qr
-            );
-          } else {
-            return prevFiltered;
-          }
-        });
-      });
-
-      socket.on('qr-code-deleted', (deletedQrCodeId) => {
-        console.log("QR Code Deleted Event Received:", deletedQrCodeId);
-
-        setQrCodes((prevQrCodes) => prevQrCodes.filter((qr) => qr.id !== deletedQrCodeId));
-        setFilteredQrCodes((prevFiltered) =>
-          prevFiltered.filter((qr) => qr.id !== deletedQrCodeId)
+        if (cancelled) return;
+        setQrCodes((data.rows || []).map(formatRow));
+        setRowCount(data.count || 0);
+      } catch (err) {
+        if (cancelled) return;
+        console.error('Error fetching QR codes:', err);
+        setQrCodes([]);
+        setRowCount(0);
+        setError(
+          err.response?.status === 401
+            ? 'Your session has expired. Please sign in again.'
+            : 'Could not load QR codes. Please try again.'
         );
-      });
-    }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
 
+    fetchQrCodes();
     return () => {
-      if (socket) {
-        socket.off('qr-code-updated');
-        socket.off('qr-code-deleted');
-      }
+      cancelled = true;
     };
-  }, [socket, backendUrl]);
-
-
-  useEffect(() => {
-    const fetchFilteredQrCodes = async () => {
-      try {
-        const response = await axios.get(`${backendUrl}/api/qr-codes/filter`, {
-          params: {
-            searchTerm,
-            branchFilter,
-            userFilter,
-            startDate: dateFilter.startDate,
-            endDate: dateFilter.endDate,
-          },
-          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-        });
-
-        const data = Array.isArray(response.data) ? response.data : [];
-
-        const formattedQrCodes = data.map((qr) => ({
-          ...qr,
-          user_name: qr.user ? qr.user.username : 'Unknown User',
-          branch_name: qr.branch ? qr.branch.branch_name : 'Unknown Branch',
-          created_at: qr.createdAt ? new Date(qr.createdAt).toLocaleString() : 'N/A',
-          updated_at: qr.updatedAt ? new Date(qr.updatedAt).toLocaleString() : 'N/A',
-          qr_code: qr.qr_code,
-        }));
-
-        setFilteredQrCodes(formattedQrCodes);
-      } catch (error) {
-        console.error('Error fetching filtered QR codes:', error);
-        setFilteredQrCodes([]);
-      }
-    };
-
-    fetchFilteredQrCodes();
-  }, [searchTerm, branchFilter, userFilter, dateFilter, backendUrl]);
+  }, [backendUrl, queryParams, authHeader]);
 
   useEffect(() => {
     const fetchBranchesAndUsers = async () => {
       try {
         const [branchesResponse, usersResponse] = await Promise.all([
-          axios.get(`${backendUrl}/branches/all`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-          }),
-          axios.get(`${backendUrl}/users/all`, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
-          }),
+          axios.get(`${backendUrl}/branches/all`, authHeader()),
+          axios.get(`${backendUrl}/users/all`, authHeader()),
         ]);
 
         setBranches(branchesResponse.data);
@@ -190,7 +161,7 @@ const ManageQr = () => {
     };
 
     fetchBranchesAndUsers();
-  }, [backendUrl]);
+  }, [backendUrl, authHeader]);
 
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
@@ -199,6 +170,43 @@ const ManageQr = () => {
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
+  };
+
+  // Export pulls the full filtered set on demand instead of the page keeping
+  // every row in memory just in case someone clicks download.
+  const handleExportCsv = async () => {
+    setExporting(true);
+    try {
+      const { data } = await axios.get(`${backendUrl}/api/qr-codes/export`, {
+        params: { ...queryParams, page: undefined, pageSize: undefined },
+        ...authHeader(),
+      });
+
+      const rows = (data.rows || []).map(formatRow);
+      if (data.capped) {
+        setError(
+          `Export limited to the most recent ${rows.length.toLocaleString()} QR codes. ` +
+          'Narrow the date range to export the rest.'
+        );
+      }
+      const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+      const csv = [
+        headers.map((h) => escape(h.label)).join(','),
+        ...rows.map((row) => headers.map((h) => escape(row[h.key])).join(',')),
+      ].join('\n');
+
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `QR_Codes_${new Date().toISOString().split('T')[0]}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error exporting QR codes:', err);
+      setError('Could not export QR codes. Please try again.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleOpenView = (qr) => {
@@ -230,7 +238,7 @@ const ManageQr = () => {
     { label: 'Updated At', key: 'updated_at' },
   ];
 
-  if (loading) {
+  if (loading && qrCodes.length === 0) {
     return (
       <Box
         display="flex"
@@ -426,43 +434,41 @@ const ManageQr = () => {
                 width: '100%',
               },
             }}>
-              <CSVLink
-                data={filteredQrCodes}
-                headers={headers}
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleExportCsv}
+                disabled={exporting}
                 sx={{
+                  flex: 1,
+                  backgroundColor: '#b3b3b3',
+                  color: 'white',
+                  '&:hover': {
+                    backgroundColor: '#FBB03A',
+                  },
+                  fontFamily: 'Montserrat, sans-serif',
+                  fontWeight: 400,
+                  minWidth: '120px',
                   width: '100%',
-                  textDecoration: 'none',
-                }}
-                filename={`QR_Codes_${new Date().toISOString().split('T')[0]}.csv`}
-              >
-                <Button
-                  variant="contained"
-                  color="primary"
-                  sx={{
-                    flex: 1,
-                    backgroundColor: '#b3b3b3',
-                    color: 'white',
-                    '&:hover': {
-                      backgroundColor: '#FBB03A',
-                    },
-                    fontFamily: 'Montserrat, sans-serif',
-                    fontWeight: 400,
-                    minWidth: '120px',
+                  '@media (max-width: 735px)': {
                     width: '100%',
-                    '@media (max-width: 735px)': {
-                      width: '100%',
-                    },
-                  }}
-                  startIcon={<DownloadIcon />}
-                >
-                  Export to CSV
-                </Button>
-              </CSVLink>
+                  },
+                }}
+                startIcon={exporting ? <CircularProgress size={18} color="inherit" /> : <DownloadIcon />}
+              >
+                {exporting ? 'Preparing...' : 'Export to CSV'}
+              </Button>
             </Box>
           </Box>
 
 
         </Box>
+        {error && (
+          <Alert severity="error" sx={{ mb: 2, fontFamily: 'Montserrat, sans-serif' }}>
+            {error}
+          </Alert>
+        )}
+
         <TableContainer component={Paper}>
           <Table>
             <TableHead>
@@ -479,7 +485,7 @@ const ManageQr = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredQrCodes.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((qr, index) => (
+              {qrCodes.map((qr, index) => (
                 <TableRow key={qr.id || `qr-${index}`}>
                   <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{qr.id}</TableCell>
                   <TableCell>
@@ -506,9 +512,9 @@ const ManageQr = () => {
           </Table>
         </TableContainer>
         <TablePagination
-          rowsPerPageOptions={[5, 10, 25]}
+          rowsPerPageOptions={[25, 50, 100]}
           component="div"
-          count={filteredQrCodes.length}
+          count={rowCount}
           rowsPerPage={rowsPerPage}
           page={page}
           onPageChange={handleChangePage}

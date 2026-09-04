@@ -2,6 +2,8 @@ import { Op } from 'sequelize';
 import models from '../model/index.js';
 const { QrCode, User, Branch ,Admin } = models;
 import crypto from "crypto";
+import { resolveTenantAdminId, branchScopeFor } from '../utils/scope.js';
+import { invalidatePrefix } from '../utils/cache.js';
 
 const createQrCode = async (req, res) => {
   try {
@@ -70,6 +72,10 @@ const createQrCode = async (req, res) => {
       timestamp,
     });
 
+    // Drop this tenant's cached dashboard so a new QR code shows up at once
+    // rather than after the TTL expires.
+    invalidatePrefix(`analytics:${admin_id}:`);
+
     // Success response with created QR code details
     res.status(201).json({
       message: 'QR code created successfully!',
@@ -129,6 +135,7 @@ const handleCallback = async (req, res) => {
     }
 
     await qrCode.update(updateData);
+    invalidatePrefix(`analytics:${qrCode.admin_id}:`);
 
     console.log("QR Code updated successfully:", qrCode);
 
@@ -222,66 +229,140 @@ const handleSuccessCallback = async (req, res) => {
 };
 
 
+// Only the columns the list actually renders. Keeps signature/nonce/timestamp
+// and the joins' surplus columns off the wire.
+const QR_LIST_ATTRIBUTES = [
+  'id', 'qr_code', 'payment_reference', 'amount', 'status',
+  'description', 'invoice_number', 'branch_id', 'createdAt', 'updatedAt',
+];
+
+const DEFAULT_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 200;
+// Sized above the current table (~20k rows) so a normal full export is not
+// truncated, while still bounding a single request's memory.
+const EXPORT_ROW_CAP = 25000;
+
+// Shared where/include for every list + export path, so filtering happens in
+// SQL instead of shipping the whole table to the browser.
+const buildQrListQuery = (req, adminId, extraWhere = {}) => {
+  const { searchTerm, branchFilter, userFilter, startDate, endDate } = req.query;
+
+  const where = { admin_id: adminId, ...extraWhere };
+
+  if (searchTerm) {
+    where[Op.or] = [
+      { payment_reference: { [Op.like]: `%${searchTerm}%` } },
+      { invoice_number: { [Op.like]: `%${searchTerm}%` } },
+    ];
+  }
+
+  if (startDate && endDate) {
+    where.createdAt = { [Op.between]: [`${startDate} 00:00:00`, `${endDate} 23:59:59`] };
+  } else if (startDate) {
+    where.createdAt = { [Op.gte]: `${startDate} 00:00:00` };
+  } else if (endDate) {
+    where.createdAt = { [Op.lte]: `${endDate} 23:59:59` };
+  }
+
+  return {
+    where,
+    include: [
+      {
+        model: User,
+        as: 'user',
+        attributes: ['id', 'username'],
+        // required only when the filter needs it -- otherwise LEFT JOIN, so a
+        // QR code whose user was deleted still appears instead of vanishing.
+        ...(userFilter ? { where: { username: userFilter }, required: true } : { required: false }),
+      },
+      {
+        model: Branch,
+        as: 'branch',
+        attributes: ['branch_name'],
+        ...(branchFilter ? { where: { branch_name: branchFilter }, required: true } : { required: false }),
+      },
+    ],
+  };
+};
+
+// Shared responder for every role's list endpoint. extraWhere is passed
+// explicitly, never as a third handler arg (Express would fill that with next).
+const sendQrCodePage = async (req, res, extraWhere = {}) => {
+  const adminId = resolveTenantAdminId(req.user);
+  if (!adminId) {
+    return res.status(400).json({ error: 'Admin ID is missing from the request' });
+  }
+
+  const page = Math.max(parseInt(req.query.page, 10) || 0, 0);
+  const requested = parseInt(req.query.pageSize, 10) || DEFAULT_PAGE_SIZE;
+  const pageSize = Math.min(Math.max(requested, 1), MAX_PAGE_SIZE);
+
+  const { count, rows } = await QrCode.findAndCountAll({
+    ...buildQrListQuery(req, adminId, extraWhere),
+    attributes: QR_LIST_ATTRIBUTES,
+    order: [['createdAt', 'DESC']],
+    limit: pageSize,
+    offset: page * pageSize,
+    distinct: true,
+    subQuery: false,
+  });
+
+  return res.json({ rows, count, page, pageSize });
+};
+
 const getAdminQrCodes = async (req, res) => {
   try {
-    console.log('User in Request:', req.user);
-    
-    const adminId = req.user.id; 
-
-    const qrCodes = await QrCode.findAll({
-      where: { admin_id: adminId }, 
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['id', 'username', 'branch_id', 'admin_id'],
-          required: true,
-        },
-        {
-          model: Branch,
-          as: 'branch',
-          attributes: ['branch_name'],
-          required: true,
-        },
-      ]
-    });
-
-    return res.json(qrCodes);
-
+    return await sendQrCodePage(req, res);
   } catch (error) {
     console.error('Error fetching QR codes:', error);
     return res.status(500).json({ error: 'Error fetching QR codes' });
   }
 };
 
-
-
-const getQrCodesBU = async (req, res) => {
+// CSV export needs every matching row, so it skips model instantiation
+// (raw/nest) and is capped to keep one request from exhausting container memory.
+const exportAdminQrCodes = async (req, res) => {
   try {
-    const { admin_id } = req.user; 
+    const adminId = resolveTenantAdminId(req.user);
+    if (!adminId) {
+      return res.status(400).json({ error: 'Admin ID is missing from the request' });
+    }
 
-    let filterCondition = {};  
+    const scope = await branchScopeFor(req.user);
+    if (scope === null) {
+      return res.status(403).json({ error: 'You are not assigned to any branch.' });
+    }
 
-    filterCondition = { admin_id: admin_id };
-    // Fetch QR codes based on the filter condition
-    const qrCodes = await QrCode.findAll({
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['id', 'username', 'branch_id', 'admin_id'],
-          where: filterCondition  
-        },
-        {
-          model: Branch, 
-          as: 'branch',
-          attributes: ['branch_name'], 
-        },
-      ],
+    const rows = await QrCode.findAll({
+      ...buildQrListQuery(req, adminId, scope),
+      attributes: QR_LIST_ATTRIBUTES,
+      order: [['createdAt', 'DESC']],
+      limit: EXPORT_ROW_CAP,
+      subQuery: false,
+      raw: true,
+      nest: true,
     });
 
-    return res.json(qrCodes);
+    return res.json({ rows, count: rows.length, capped: rows.length === EXPORT_ROW_CAP });
+  } catch (error) {
+    console.error('Error exporting QR codes:', error);
+    return res.status(500).json({ error: 'Error exporting QR codes' });
+  }
+};
 
+
+
+// Branch users and Co-Admins share this endpoint. The branch-user page used to
+// pull every QR code under the admin and filter by branch in the browser; that
+// scope now lives in SQL.
+const getQrCodesBU = async (req, res) => {
+  try {
+    const scope = await branchScopeFor(req.user);
+    if (scope === null) {
+      return res.status(403).json({ error: 'You are not assigned to any branch.' });
+    }
+
+    return await sendQrCodePage(req, res, scope);
   } catch (error) {
     console.error('Error fetching QR codes:', error);
     return res.status(500).json({ error: 'Error fetching QR codes' });
@@ -290,105 +371,24 @@ const getQrCodesBU = async (req, res) => {
 
 
 //Filtered qr for CA
+// Co-Admins resolve to their parent admin, so this is the same paginated query.
 const getFilteredQrCodesCA = async (req, res) => {
-  const { searchTerm, branchFilter, userFilter, startDate, endDate } = req.query;
-  
-  const { userType, admin_id } = req.user;
-
-  if (!admin_id) {
-    return res.status(400).json({ error: 'Admin ID is missing from the request' });
-  }
-
   try {
-    const whereConditions = {
-      ...(searchTerm && { payment_reference: { [Op.like]: `%${searchTerm}%` } }),
-      ...(startDate && endDate && { createdAt: { [Op.between]: [startDate, endDate] } }),
-      admin_id: admin_id,  
-    };
-
-    const userConditions = {
-      ...(userFilter && { username: { [Op.like]: `%${userFilter}%` } }),
-    };
-
-    const branchConditions = {
-      ...(branchFilter && { branch_name: { [Op.like]: `%${branchFilter}%` } }),
-    };
-
-    const qrCodes = await QrCode.findAll({
-      where: whereConditions, 
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['username'],
-          where: Object.keys(userConditions).length > 0 ? userConditions : undefined, 
-        },
-        {
-          model: Branch,
-          as: 'branch',
-          attributes: ['branch_name'], 
-          where: Object.keys(branchConditions).length > 0 ? branchConditions : undefined, 
-        },
-      ],
-      attributes: ['createdAt', 'updatedAt', 'amount', 'payment_reference', 'status', 'description', 'qr_code', 'id'], 
-    });
-
-    res.status(200).json(qrCodes);
+    return await sendQrCodePage(req, res);
   } catch (error) {
     console.error('Error fetching QR codes: ', error);
-    res.status(500).json({ error: 'Failed to fetch QR codes' });
+    return res.status(500).json({ error: 'Failed to fetch QR codes' });
   }
 };
 
 //Filtered qr for admin
+// /filter and /get now answer the same paginated, SQL-filtered query.
 const getFilteredQrCodes = async (req, res) => {
-  const { searchTerm, branchFilter, userFilter, startDate, endDate } = req.query;
-
-  const adminId = req.user.id;
-
-  if (!adminId) {
-    return res.status(400).json({ error: 'Admin ID is missing from the request' });
-  }
-
   try {
-    const whereConditions = {
-      ...(searchTerm && { payment_reference: { [Op.like]: `%${searchTerm}%` } }),
-      ...(startDate && endDate && {
-        createdAt: { [Op.between]: [startDate, endDate] },
-      }),
-      admin_id: adminId, 
-    };
-    const userConditions = {
-      ...(userFilter && { username: { [Op.like]: `%${userFilter}%` } }),
-    };
-
-    const branchConditions = {
-      ...(branchFilter && { branch_name: { [Op.like]: `%${branchFilter}%` } }),
-    };
-
-    const qrCodes = await QrCode.findAll({
-      where: whereConditions, 
-      include: [
-        {
-          model: User,
-          as: 'user',
-          attributes: ['username'],
-          where: Object.keys(userConditions).length > 0 ? userConditions : undefined, 
-        },
-        {
-          model: Branch,
-          as: 'branch',
-          attributes: ['branch_name'], 
-          where: Object.keys(branchConditions).length > 0 ? branchConditions : undefined, 
-        },
-      ],
-      attributes: ['createdAt', 'updatedAt', 'amount', 'payment_reference', 'status', 'description', 'qr_code', 'id'], 
-    });
-
-    res.status(200).json(qrCodes);
+    return await sendQrCodePage(req, res);
   } catch (error) {
     console.error('Error fetching QR codes: ', error);
-    res.status(500).json({ error: 'Failed to fetch QR codes' });
+    return res.status(500).json({ error: 'Failed to fetch QR codes' });
   }
 };
 
@@ -483,6 +483,7 @@ export {
   createQrCode, 
   handleCallback, 
   getAdminQrCodes,  
+  exportAdminQrCodes,
   checkInvoice, 
   getFilteredQrCodes,
   getFilteredQrCodesCA, 
