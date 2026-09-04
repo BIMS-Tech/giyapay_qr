@@ -22,6 +22,8 @@
   --app-text-muted: #828282;
   --app-shadow: rgba(0, 0, 0, 0.1);
   --app-hover: #f0f0f0;
+  --app-backdrop: #e5e5e6;
+  --app-surface-subtle: #e9ecef;
 }
 
 :root[data-theme="dark"] {
@@ -34,9 +36,24 @@
   --app-text-muted: #8b91a0;
   --app-shadow: rgba(0, 0, 0, 0.5);
   --app-hover: #232833;
+  --app-backdrop: #0d0f14;
+  --app-surface-subtle: #232833;
 }
 
 body {
   background-color: var(--app-bg);
   color: var(--app-text);
+}
+
+/* Chrome paints autofilled inputs with its own light background, which shows
+ * as a pale block over a dark field. There is no property to set it directly;
+ * the inset box-shadow trick is the standard workaround. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-text-fill-color: var(--app-text);
+  -webkit-box-shadow: 0 0 0 1000px var(--app-surface) inset;
+  caret-color: var(--app-text);
+  transition: background-color 5000s ease-in-out 0s;
 }

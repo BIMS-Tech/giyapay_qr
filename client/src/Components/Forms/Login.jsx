@@ -11,6 +11,7 @@ import Snackbar from '@mui/material/Snackbar';
 import MuiAlert from '@mui/material/Alert';
 import CircularProgress from '@mui/material/CircularProgress';
 import Box from '@mui/material/Box';
+import ThemeToggle from '../ThemeToggle';
 
 const Alert = React.forwardRef(function Alert(props, ref) {
     return <MuiAlert elevation={6} ref={ref} variant="filled" {...props} />;
@@ -106,6 +107,11 @@ const Login = () => {
 
     return (
         <div className="login-page">
+            {/* Login has no dashboard header, so the toggle lives here -
+                otherwise the theme can only be changed after signing in. */}
+            <Box sx={{ position: 'absolute', top: 16, right: 16 }}>
+                <ThemeToggle />
+            </Box>
             <div className="login-container">
                 <div className="login-left">
                     <img src={logo} alt="Giyapay Logo" className="login-logo" />

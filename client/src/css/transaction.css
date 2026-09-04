@@ -31,13 +31,13 @@
 }
 
 .transaction-history table thead th {
-  background-color: #e9ecef;
+  background-color: var(--app-surface-subtle);
   color: var(--app-text);
   font-weight: bold;
 }
 
 .transaction-history table tbody tr:hover {
-  background-color: #f1f1f1;
+  background-color: var(--app-hover);
 }
 
 @media (max-width: 768px) {
