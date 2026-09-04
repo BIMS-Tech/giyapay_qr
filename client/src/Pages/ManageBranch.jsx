@@ -14,8 +14,8 @@ const ManageBranches = () => {
   const [openSnackbar, setOpenSnackbar] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarSeverity, setSnackbarSeverity] = useState('success');
-  const [page, setPage] = useState(0); 
-  const [rowsPerPage, setRowsPerPage] = useState(5); 
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(5);
   const isTabletOrMobile = useMediaQuery('(max-width: 900px)');
   const location = useLocation();
 
@@ -86,7 +86,7 @@ const ManageBranches = () => {
   // Handle rows per page change
   const handleChangeRowsPerPage = (event) => {
     setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0); 
+    setPage(0);
   };
 
   return (
@@ -139,55 +139,59 @@ const ManageBranches = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {branches.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((branch) => (
-                    <TableRow key={branch.id}>
-                      <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{branch.id}</TableCell>
-                      <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{branch.branch_name}</TableCell>
-                      <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{branch.bank_name}</TableCell>
-                      <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{branch.bank_branch}</TableCell>
-                      <TableCell>
-                        <Box sx={{ display: 'flex', gap: 1 }}>
-                          <Button
-                            component={Link}
-                            to={`/super-dashboard/edit-branch/${branch.id}`}
-                            variant="contained"
-                            sx={{
-                              maxWidth: '150px',
-                              flex: 1,
-                              backgroundColor: '#FBB03A',
-                              color: 'black',
-                              '&:hover': {
-                                backgroundColor: '#ED1F79',
-                              },
-                              fontFamily: 'Montserrat, sans-serif',
-                              fontWeight: 400,
-                            }}
-                            startIcon={<EditIcon />}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            variant="contained"
-                            sx={{
-                              maxWidth: '150px',
-                              flex: 1,
-                              backgroundColor: '#ED1F79',
-                              color: 'white',
-                              '&:hover': {
+                  {[...branches]
+                    .sort((a, b) => b.id - a.id)
+                    .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                    .map((branch) => (
+
+                      <TableRow key={branch.id}>
+                        <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{branch.id}</TableCell>
+                        <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{branch.branch_name}</TableCell>
+                        <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{branch.bank_name}</TableCell>
+                        <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{branch.bank_branch}</TableCell>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Button
+                              component={Link}
+                              to={`/super-dashboard/edit-branch/${branch.id}`}
+                              variant="contained"
+                              sx={{
+                                maxWidth: '150px',
+                                flex: 1,
                                 backgroundColor: '#FBB03A',
-                              },
-                              fontFamily: 'Montserrat, sans-serif',
-                              fontWeight: 400,
-                            }}
-                            onClick={() => openDeleteDialog(branch)}
-                            startIcon={<DeleteIcon />}
-                          >
-                            Delete
-                          </Button>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                                color: 'black',
+                                '&:hover': {
+                                  backgroundColor: '#ED1F79',
+                                },
+                                fontFamily: 'Montserrat, sans-serif',
+                                fontWeight: 400,
+                              }}
+                              startIcon={<EditIcon />}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="contained"
+                              sx={{
+                                maxWidth: '150px',
+                                flex: 1,
+                                backgroundColor: '#ED1F79',
+                                color: 'white',
+                                '&:hover': {
+                                  backgroundColor: '#FBB03A',
+                                },
+                                fontFamily: 'Montserrat, sans-serif',
+                                fontWeight: 400,
+                              }}
+                              onClick={() => openDeleteDialog(branch)}
+                              startIcon={<DeleteIcon />}
+                            >
+                              Delete
+                            </Button>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                 </TableBody>
               </Table>
             </Box>

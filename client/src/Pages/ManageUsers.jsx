@@ -166,79 +166,82 @@ const ManageUsers = () => {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {users.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{user.id}</TableCell>
-                      <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{user.first_name}</TableCell>
-                      <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{user.last_name}</TableCell>
-                      <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{user.username}</TableCell>
-                      <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{user.email}</TableCell>
-                      <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{user.user_type}</TableCell>
-                      <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{user.status}</TableCell>
-                      <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>
-                        {user.user_type === 'Co-Admin' ? 'Bank' : user.branch ? user.branch.branch_name : 'No Branch Assigned'}
-                      </TableCell>
-                      <TableCell>
-                        <Box display="flex" gap={1} flexDirection={isMobile ? 'column' : 'row'}>
-                          <Button
-                            variant="contained"
-                            color="secondary"
-                            onClick={() => handleClickOpen(user.id)}
-                            sx={{
-                              maxWidth: '150px',
-                              flex: 1,
-                              backgroundColor: '#ED1F79',
-                              color: 'white',
-                              '&:hover': {
-                                backgroundColor: '#FBB03A',
-                              },
-                              fontFamily: 'Montserrat, sans-serif',
-                              fontWeight: 400,
-                            }}
-                          >
-                            Delete
-                          </Button>
-                          <Button
-                            variant="contained"
-                            color="primary"
-                            component={Link}
-                            to={`/super-dashboard/edit-users/${user.id}`}
-                            sx={{
-                              maxWidth: '150px',
-                              flex: 1,
-                              backgroundColor: '#FBB03A',
-                              color: 'black',
-                              '&:hover': {
+                  {[...users]
+                    .sort((a, b) => b.id - a.id)
+                    .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+                    .map((user) => (
+                      <TableRow key={user.id}>
+                        <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{user.id}</TableCell>
+                        <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{user.first_name}</TableCell>
+                        <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{user.last_name}</TableCell>
+                        <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{user.username}</TableCell>
+                        <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{user.email}</TableCell>
+                        <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{user.user_type}</TableCell>
+                        <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>{user.status}</TableCell>
+                        <TableCell sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>
+                          {user.user_type === 'Co-Admin' ? 'Bank' : user.branch ? user.branch.branch_name : 'No Branch Assigned'}
+                        </TableCell>
+                        <TableCell>
+                          <Box display="flex" gap={1} flexDirection={isMobile ? 'column' : 'row'}>
+                            <Button
+                              variant="contained"
+                              color="secondary"
+                              onClick={() => handleClickOpen(user.id)}
+                              sx={{
+                                maxWidth: '150px',
+                                flex: 1,
                                 backgroundColor: '#ED1F79',
-                              },
-                              fontFamily: 'Montserrat, sans-serif',
-                              fontWeight: 400,
-                            }}
-                          >
-                            Edit
-                          </Button>
-                          <Button
-                            variant="contained"
-                            color={user.status === 'Active' ? 'success' : 'inherit'}
-                            onClick={() => toggleStatus(user.id, user.status)}
-                            sx={{
-                              maxWidth: '150px',
-                              flex: 1,
-                              backgroundColor: '#b3b3b3',
-                              color: 'white',
-                              '&:hover': {
+                                color: 'white',
+                                '&:hover': {
+                                  backgroundColor: '#FBB03A',
+                                },
+                                fontFamily: 'Montserrat, sans-serif',
+                                fontWeight: 400,
+                              }}
+                            >
+                              Delete
+                            </Button>
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              component={Link}
+                              to={`/super-dashboard/edit-users/${user.id}`}
+                              sx={{
+                                maxWidth: '150px',
+                                flex: 1,
                                 backgroundColor: '#FBB03A',
-                              },
-                              fontFamily: 'Montserrat, sans-serif',
-                              fontWeight: 400,
-                            }}
-                          >
-                            {user.status === 'Active' ? 'Active' : 'Inactive'}
-                          </Button>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                                color: 'black',
+                                '&:hover': {
+                                  backgroundColor: '#ED1F79',
+                                },
+                                fontFamily: 'Montserrat, sans-serif',
+                                fontWeight: 400,
+                              }}
+                            >
+                              Edit
+                            </Button>
+                            <Button
+                              variant="contained"
+                              color={user.status === 'Active' ? 'success' : 'inherit'}
+                              onClick={() => toggleStatus(user.id, user.status)}
+                              sx={{
+                                maxWidth: '150px',
+                                flex: 1,
+                                backgroundColor: '#b3b3b3',
+                                color: 'white',
+                                '&:hover': {
+                                  backgroundColor: '#FBB03A',
+                                },
+                                fontFamily: 'Montserrat, sans-serif',
+                                fontWeight: 400,
+                              }}
+                            >
+                              {user.status === 'Active' ? 'Active' : 'Inactive'}
+                            </Button>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                 </TableBody>
               </Table>
             </Box>
