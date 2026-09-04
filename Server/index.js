@@ -18,6 +18,8 @@ import User from './model/userModel.js';
 import { Op } from 'sequelize';
 import Admin from './model/adminModel.js';
 import "./middleware/checkTransactions.js"
+import { setTransactionIo } from "./middleware/checkTransactions.js";
+import internalRoutes from "./Routes/internalRoutes.js";
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -54,6 +56,7 @@ app.use('/branches', branchesRoutes);
 app.use('/api/qr-codes', qrCodesRoute);
 app.use('/upload', uploadRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/internal', internalRoutes);
 
 //--------------------------------------------------------------Temporary users section for fast use issues will be fixed later----------------------------------------------------
 
@@ -156,6 +159,10 @@ setInterval(cleanUpBlacklistedTokens, 24 * 60 * 60 * 1000);
 
 // Socket.IO connection event
 app.set("socketio", io);
+
+// So the scheduled transaction check can emit real-time updates; it was
+// previously invoked with no io and its emits were silently dropped.
+setTransactionIo(io);
 
 io.on("connection", (socket) => {
   console.log("A user connected:", socket.id);

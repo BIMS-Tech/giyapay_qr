@@ -22,6 +22,13 @@ const REQUEST_TIMEOUT_MS = 10000;
 // without this a slow run gets a second one stacked on top of it.
 let runInProgress = false;
 
+// checkTransactions emits socket events when given an io instance, but the
+// scheduler had always called it with no argument, so those emits never fired.
+let ioRef = null;
+export const setTransactionIo = (io) => {
+  ioRef = io;
+};
+
 // Runs `worker` over `items` with at most `limit` in flight at once.
 const mapWithConcurrency = async (items, limit, worker) => {
   let cursor = 0;
@@ -45,7 +52,7 @@ const generateCheckTransactionSignature = (merchantID, invoice_number, timestamp
 const checkTransactions = async (io) => {
   if (runInProgress) {
     console.log("Previous transaction check still running; skipping this tick.");
-    return;
+    return { skipped: true };
   }
   runInProgress = true;
 
@@ -69,7 +76,7 @@ const checkTransactions = async (io) => {
     });
 
     if (!transactions.length) {
-      return;
+      return { checked: 0, updated: 0, failed: 0 };
     }
 
     await mapWithConcurrency(transactions, CONCURRENCY, (async (transaction) => {
@@ -151,16 +158,30 @@ const checkTransactions = async (io) => {
       }));
 
     console.log(`Transaction check: ${checked} checked, ${updated} updated, ${failed} failed.`);
+    return { checked, updated, failed };
   } catch (error) {
     console.error("Error checking transactions:", error.message);
+    return { checked, updated, failed, error: error.message };
   } finally {
     runInProgress = false;
   }
 };
 
-// **Start cron job to check transactions every 1 minute**
-cron.schedule("*/1 * * * *", async () => {
-  await checkTransactions();
-});
+// The in-process cron is off by default, and Cloud Scheduler drives
+// POST /internal/check-transactions instead. Two reasons:
+//
+//  1. Cloud Run scales to zero. With no traffic there is no container, so the
+//     job simply stopped running - the logs showed 20-minute gaps.
+//  2. node-cron runs inside *every* instance. Under load with maxScale 100
+//     that multiplied the gateway calls by the instance count.
+//
+// Set ENABLE_INPROCESS_CRON=true only for local development, where there is
+// no scheduler.
+if (process.env.ENABLE_INPROCESS_CRON === "true") {
+  console.log("In-process transaction cron enabled (development mode).");
+  cron.schedule("*/1 * * * *", async () => {
+    await checkTransactions(ioRef);
+  });
+}
 
 export default checkTransactions;
