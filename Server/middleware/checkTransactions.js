@@ -325,9 +325,14 @@ const checkTransactions = async (io) => {
       }
     });
 
+    // Every outcome is printed, including unchanged and skipped. Leaving those
+    // two out made a sweep of 200 rows the gateway still calls PENDING look
+    // identical to a sweep where all 200 were unreadable - which is exactly
+    // the case where the difference matters.
     console.log(
       `Transaction check: ${tally.checked} checked, ${tally.updated} updated, ` +
-        `${tally.expired} expired, ${tally.retry} awaiting gateway, ${tally.failed} failed.`
+        `${tally.unchanged} unchanged, ${tally.expired} expired, ` +
+        `${tally.retry} awaiting gateway, ${tally.skipped} skipped, ${tally.failed} failed.`
     );
     return tally;
   } catch (error) {
