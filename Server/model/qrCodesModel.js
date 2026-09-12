@@ -65,7 +65,19 @@ const QrCode = sequelize.define('QrCode', {
     type: DataTypes.INTEGER,
     defaultValue: 0,
   },
-  
+  // When the background check may look at this row again. The check stamps it
+  // on every row it touches, which is what keeps the queue rotating: a row
+  // just checked sorts behind every row that is due, so no set of rows can
+  // monopolise the batch and starve the rest. NULL means "never checked".
+  //
+  // Requires database/migrations/002_qr_codes_next_check_time.sql - the column
+  // must exist before this model ships, or every query on qr_codes fails with
+  // "Unknown column".
+  next_check_time: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+
 }, {
   tableName: 'qr_codes',
   timestamps: true,

@@ -20,6 +20,7 @@ import Admin from './model/adminModel.js';
 import "./middleware/checkTransactions.js"
 import { setTransactionIo } from "./middleware/checkTransactions.js";
 import internalRoutes from "./Routes/internalRoutes.js";
+import { ensureSchema } from "./database/ensureSchema.js";
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -171,6 +172,11 @@ io.on("connection", (socket) => {
     console.log("User disconnected:", socket.id);
   });
 });
+
+// Bring the schema up to what this build needs before accepting traffic.
+// qr_codes.next_check_time is required by qrCodesModel.js, and without it
+// every query on that table fails - so this runs first, not in the background.
+await ensureSchema();
 
 // Server listening port
 server.listen(PORT, () => {

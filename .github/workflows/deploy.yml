@@ -86,12 +86,20 @@ jobs:
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_DIALECT: ${{ secrets.DB_DIALECT }}
           CORS_ORIGIN: ${{ secrets.CORS_ORIGIN }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
           # --set-env-vars replaces the service's whole environment. If a secret
           # is unset it would be written as an empty string and take production
           # down, so refuse to deploy at all rather than deploy a broken config.
+          #
+          # CRON_SECRET is in this list for exactly that reason. It was missing
+          # from the deploy while /internal/check-transactions already required
+          # it, and that endpoint fails closed - so every deploy silently wiped
+          # the secret and left the payment reconciliation job answering 503,
+          # with nothing in the UI to show that transactions had stopped being
+          # checked at all. Failing the deploy is the loud version of that.
           missing=""
-          for name in JWT_SECRET DB_NAME DB_USER DB_PASSWORD DB_HOST DB_DIALECT CORS_ORIGIN; do
+          for name in JWT_SECRET DB_NAME DB_USER DB_PASSWORD DB_HOST DB_DIALECT CORS_ORIGIN CRON_SECRET; do
             if [ -z "$(printenv "$name")" ]; then missing="$missing $name"; fi
           done
           if [ -n "$missing" ]; then
@@ -123,7 +131,7 @@ jobs:
             --max-instances 100 \
             --timeout 300 \
             --add-cloudsql-instances "$CLOUDSQL_INSTANCE" \
-            --set-env-vars "JWT_SECRET=${{ secrets.JWT_SECRET }},DB_NAME=${{ secrets.DB_NAME }},DB_USER=${{ secrets.DB_USER }},DB_PASSWORD=${{ secrets.DB_PASSWORD }},DB_HOST=${{ secrets.DB_HOST }},DB_DIALECT=${{ secrets.DB_DIALECT }},CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}"
+            --set-env-vars "JWT_SECRET=${{ secrets.JWT_SECRET }},DB_NAME=${{ secrets.DB_NAME }},DB_USER=${{ secrets.DB_USER }},DB_PASSWORD=${{ secrets.DB_PASSWORD }},DB_HOST=${{ secrets.DB_HOST }},DB_DIALECT=${{ secrets.DB_DIALECT }},CORS_ORIGIN=${{ secrets.CORS_ORIGIN }},CRON_SECRET=${{ secrets.CRON_SECRET }}"
 
       - name: Show deployed revision
         run: |
