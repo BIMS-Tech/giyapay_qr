@@ -37,6 +37,8 @@ const ManageQr = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [rechecking, setRechecking] = useState(false);
+  const [recheckResult, setRecheckResult] = useState('');
   const socketRef = useRef(null);
 
   const [searchParams] = useSearchParams();
@@ -98,10 +100,15 @@ const ManageQr = () => {
     });
     socketRef.current = socket;
 
+    // The payload carries only the fields a payment update can change, so it
+    // is merged into the row already on screen and formatted afterwards.
+    // Formatting it on its own produced 'Unknown User'/'Unknown Branch' for
+    // the missing associations and then wrote those over the real values.
     const applyUpdate = (data) => {
-      const updated = formatRow(data.qrCode);
+      const incoming = data?.qrCode;
+      if (!incoming?.id) return;
       setQrCodes((prev) =>
-        prev.map((qr) => (qr.id === updated.id ? { ...qr, ...updated } : qr))
+        prev.map((qr) => (qr.id === incoming.id ? formatRow({ ...qr, ...incoming }) : qr))
       );
     };
 
@@ -223,12 +230,52 @@ const ManageQr = () => {
 
   const handleOpenView = (qr) => {
     setSelectedQr(qr);
+    setRecheckResult('');
     setOpenView(true);
   };
 
   const handleCloseView = () => {
     setOpenView(false);
     setSelectedQr(null);
+    setRecheckResult('');
+  };
+
+  // Asks the gateway about this one invoice immediately. The scheduled check
+  // is fair but not instant, so a payment settled seconds ago can still read
+  // as pending here until its turn comes round.
+  const handleRecheck = async () => {
+    if (!selectedQr) return;
+
+    setRechecking(true);
+    setRecheckResult('');
+    try {
+      const { data } = await axios.post(
+        `${backendUrl}/api/qr-codes/refresh/${encodeURIComponent(selectedQr.invoice_number)}`,
+        {},
+        authHeader()
+      );
+
+      const fresh = {
+        ...selectedQr,
+        status: data.status,
+        payment_reference: data.payment_reference,
+        amount: data.amount,
+        updatedAt: data.updatedAt,
+      };
+      setSelectedQr(formatRow(fresh));
+      setQrCodes((prev) => prev.map((qr) => (qr.id === fresh.id ? formatRow({ ...qr, ...fresh }) : qr)));
+      setRecheckResult(
+        data.outcome === 'updated'
+          ? `Updated from the gateway: ${data.status}.`
+          : `The gateway still reports this as ${data.status}.`
+      );
+    } catch (err) {
+      setRecheckResult(
+        err.response?.data?.error || 'Could not reach the payment gateway. Please try again.'
+      );
+    } finally {
+      setRechecking(false);
+    }
   };
 
   const handleDateChange = (event) => {
@@ -601,7 +648,27 @@ const ManageQr = () => {
                 <Typography variant="body1" gutterBottom sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 400 }}>
                   <strong>Updated At:</strong> {selectedQr.updated_at}
                 </Typography>
-                <Box mt={2} display="flex" justifyContent="flex-end">
+                {recheckResult && (
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    {recheckResult}
+                  </Alert>
+                )}
+                <Box mt={2} display="flex" justifyContent="flex-end" gap={1}>
+                  <Button
+                    variant="outlined"
+                    onClick={handleRecheck}
+                    disabled={rechecking}
+                    startIcon={rechecking ? <CircularProgress size={16} /> : <RefreshIcon />}
+                    sx={{
+                      borderColor: '#ED1F79',
+                      color: '#ED1F79',
+                      fontFamily: 'Montserrat, sans-serif',
+                      fontWeight: 400,
+                      '&:hover': { borderColor: '#ED1F79', backgroundColor: 'rgba(237, 31, 121, 0.08)' },
+                    }}
+                  >
+                    Re-check payment
+                  </Button>
                   <Button variant="contained" color="primary" onClick={handleCloseView} sx={{
                     maxWidth: '150px',
                     flex: 1,

@@ -4,6 +4,7 @@ const { QrCode, User, Branch ,Admin } = models;
 import crypto from "crypto";
 import { resolveTenantAdminId, branchScopeFor } from '../utils/scope.js';
 import { invalidatePrefix } from '../utils/cache.js';
+import { refreshTransactionByInvoice } from '../middleware/checkTransactions.js';
 
 const createQrCode = async (req, res) => {
   try {
@@ -110,8 +111,12 @@ const handleCallback = async (req, res) => {
       return res.status(404).json({ message: "QR Code not found" });
     }
 
-    // Prevent duplicate processing
-    if (["Failed", "Cancelled"].includes(qrCode.status)) {
+    // Prevent duplicate processing. 'paid' is in this list deliberately: a
+    // cancel or error callback can arrive after the payment has already
+    // settled (the payer backs out of the gateway page once the transfer is
+    // done), and letting it through would turn a real payment into a
+    // cancellation.
+    if (["paid", "failed", "cancelled", "expired"].includes(qrCode.status)) {
       console.log("Transaction already processed:", qrCode.status);
       return res.status(200).json({ message: "Transaction already processed", qrCode });
     }
@@ -122,15 +127,18 @@ const handleCallback = async (req, res) => {
       payment_reference: refno,
     };
 
+    // Lowercase, because that is the vocabulary every reader uses: the status
+    // filter on the QR list offers paid/pending/expired/cancelled/failed, and
+    // capitalised 'Failed' matched none of them.
     switch (callbackType) {
       case "error-callback":
-        updateData.status = "Failed";
+        updateData.status = "failed";
         break;
       case "cancel-callback":
-        updateData.status = "Cancelled";
+        updateData.status = "cancelled";
         break;
       default:
-        updateData.status = "Unknown";
+        updateData.status = "unknown";
         break;
     }
 
@@ -211,11 +219,33 @@ const handleSuccessCallback = async (req, res) => {
       return res.status(200).json({ message: "Transaction already processed" });
     }
 
-    // Update transaction status
-    await QrCode.update(
-      { status: "paid", amount, payment_reference: refno },
-      { where: { id: existingTransaction.id } }
-    );
+    // Update transaction status. next_check_time is cleared because the row is
+    // settled and the background check has no reason to look at it again.
+    await existingTransaction.update({
+      status: "paid",
+      amount,
+      payment_reference: refno,
+      next_check_time: null,
+    });
+
+    // Everything below used to be missing, which is why a payment confirmed on
+    // this page still showed as pending on an open QR list until the page was
+    // reloaded, and why the dashboard tiles lagged by the cache TTL.
+    invalidatePrefix(`analytics:${existingTransaction.admin_id}:`);
+
+    const io = req.app.get("socketio");
+    if (io) {
+      io.emit("qr-code-updated", {
+        qrCode: {
+          id: existingTransaction.id,
+          invoice_number: existingTransaction.invoice_number,
+          status: existingTransaction.status,
+          payment_reference: existingTransaction.payment_reference,
+          amount: existingTransaction.amount,
+          updatedAt: existingTransaction.updatedAt,
+        },
+      });
+    }
 
     return res.status(200).json({
       message: "Transaction verified and updated successfully",
@@ -484,6 +514,59 @@ const getPaymentDetailsByInvoice = async (req, res) => {
 
 
 
+// Re-read one invoice from the gateway on demand.
+//
+// The background check is fair but not instant - with a large pending backlog
+// a given row can be a while from its turn - and a cashier holding a customer's
+// paid receipt needs the answer now, not on the next sweep.
+const refreshQrCodeStatus = async (req, res) => {
+  try {
+    const { invoice_number } = req.params;
+
+    if (!invoice_number) {
+      return res.status(400).json({ error: 'Invoice number is required' });
+    }
+
+    const adminId = resolveTenantAdminId(req.user);
+    if (!adminId) {
+      return res.status(400).json({ error: 'Admin ID is missing from the request' });
+    }
+
+    // Scoped exactly like the list endpoints, so refreshing cannot be used to
+    // probe invoice numbers belonging to another tenant or another branch.
+    const scope = await branchScopeFor(req.user);
+    if (scope === null) {
+      return res.status(403).json({ error: 'You are not assigned to any branch.' });
+    }
+
+    const { found, outcome, transaction } = await refreshTransactionByInvoice(
+      invoice_number,
+      req.app.get('socketio'),
+      { admin_id: adminId, ...scope }
+    );
+
+    if (!found) {
+      return res.status(404).json({ error: 'Invoice number not found' });
+    }
+
+    if (outcome === 'updated') {
+      invalidatePrefix(`analytics:${adminId}:`);
+    }
+
+    return res.status(200).json({
+      outcome,
+      status: transaction.status,
+      payment_reference: transaction.payment_reference,
+      amount: transaction.amount,
+      updatedAt: transaction.updatedAt,
+    });
+  } catch (error) {
+    console.error('Error refreshing QR code status:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+
 export { 
   createQrCode, 
   handleCallback, 
@@ -495,6 +578,7 @@ export {
   getQrCodesBU  ,
   countQrCodesByAdmin,
   getPaymentDetailsByInvoice,
+  refreshQrCodeStatus,
   handleSuccessCallback
 };
 

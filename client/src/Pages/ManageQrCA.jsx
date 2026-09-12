@@ -98,10 +98,15 @@ const ManageQrCA = () => {
     });
     socketRef.current = socket;
 
+    // The payload carries only the fields a payment update can change, so it
+    // is merged into the row already on screen and formatted afterwards.
+    // Formatting it on its own produced 'Unknown User'/'Unknown Branch' for
+    // the missing associations and then wrote those over the real values.
     const applyUpdate = (data) => {
-      const updated = formatRow(data.qrCode);
+      const incoming = data?.qrCode;
+      if (!incoming?.id) return;
       setQrCodes((prev) =>
-        prev.map((qr) => (qr.id === updated.id ? { ...qr, ...updated } : qr))
+        prev.map((qr) => (qr.id === incoming.id ? formatRow({ ...qr, ...incoming }) : qr))
       );
     };
 

@@ -1,5 +1,5 @@
 import express from 'express';
-import { createQrCode,handleSuccessCallback, handleCallback,getAdminQrCodes,exportAdminQrCodes,checkInvoice,getFilteredQrCodes,getQrCodesBU,getFilteredQrCodesCA,countQrCodesByAdmin,getPaymentDetailsByInvoice } from '../controller/qrCodesController.js';
+import { createQrCode,handleSuccessCallback, handleCallback,getAdminQrCodes,exportAdminQrCodes,checkInvoice,getFilteredQrCodes,getQrCodesBU,getFilteredQrCodesCA,countQrCodesByAdmin,getPaymentDetailsByInvoice,refreshQrCodeStatus } from '../controller/qrCodesController.js';
 import models from '../model/index.js';
 import { authenticateToken } from '../middleware/authenticate.js';
 
@@ -43,6 +43,12 @@ router.post('/callback/:callbackType', validateCallbackType, (req, res, next) =>
 // Route for handling success callback separately
 router.post('/success-callback', handleSuccessCallback);
 
+
+// Ask the gateway about one invoice right now, instead of waiting for the
+// scheduled check to reach it. Authenticated and tenant-scoped in the
+// controller: it hits the payment gateway, so it is not something an anonymous
+// caller may drive.
+router.post('/refresh/:invoice_number', authenticateToken, refreshQrCodeStatus);
 
 //check
 router.get('/check-invoice/:invoice_number', checkInvoice);
